@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.imotor.filamentdemo.FilamentView2
+        android:id="@+id/filament_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <LinearLayout
+        android:id="@+id/left_door_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="6dp"
+        android:orientation="vertical">
+
+        <Button
+            android:id="@+id/open_left_door"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="open left door" />
+
+        <Button
+            android:id="@+id/close_left_door"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="close left door" />
+
+        <Button
+            android:id="@+id/open_right_door"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="open right door" />
+
+        <Button
+            android:id="@+id/close_right_door"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="close right door" />
+    </LinearLayout>
+
+
+    <LinearLayout
+        android:id="@+id/x_control_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="6dp"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/x_pos_max"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="x_max" />
+
+        <Button
+            android:id="@+id/x_pos_increase"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="x+" />
+
+        <Button
+            android:id="@+id/x_pos_reset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="x0" />
+
+        <Button
+            android:id="@+id/x_pos_reduce"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="x-" />
+
+        <Button
+            android:id="@+id/x_pos_min"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="x_min" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/y_control_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="6dp"
+        android:layout_toEndOf="@id/x_control_layout"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <Button
+            android:id="@+id/y_pos_max"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="y_max" />
+
+        <Button
+            android:id="@+id/y_pos_increase"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="y+" />
+
+        <Button
+            android:id="@+id/y_pos_reset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="y0" />
+
+        <Button
+            android:id="@+id/y_pos_reduce"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="y-" />
+
+        <Button
+            android:id="@+id/y_pos_min"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="y_min" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/z_control_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="6dp"
+        android:layout_toEndOf="@id/y_control_layout"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+
+        <Button
+            android:id="@+id/z_pos_max"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="z_max" />
+
+        <Button
+            android:id="@+id/z_pos_increase"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="z+" />
+
+        <Button
+            android:id="@+id/z_pos_reset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="z0" />
+
+        <Button
+            android:id="@+id/z_pos_reduce"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="z-" />
+
+        <Button
+            android:id="@+id/z_pos_min"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="z_min" />
+    </LinearLayout>
+
+
+</RelativeLayout>
