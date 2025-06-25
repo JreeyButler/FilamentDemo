@@ -282,11 +282,14 @@ public class FilamentView2 extends SurfaceView {
     }
 
     private final DoorController doorController = new DoorController() {
-
+        private final HashMap<Integer, Boolean> doorOpenStatus = new HashMap<>(16);
 
         @Override
         public void openDoor(int doorIndex) {
             Log.d(TAG, "openDoor: " + doorIndex);
+            if (isOpened(doorIndex)) {
+                return;
+            }
             TransformManager manager = mModelViewer.getEngine().getTransformManager();
             int[] entities = doorIndex == FRONT_LEFT_DOOR ? LEFT_DOOR_ENTITIES : RIGHT_DOOR_ENTITIES;
             for (int entity : entities) {
@@ -315,21 +318,30 @@ public class FilamentView2 extends SurfaceView {
 
                 manager.setTransform(instance, currentTransform);
             }
+            doorOpenStatus.put(doorIndex, true);
         }
 
         @Override
         public void closeDoor(int doorIndex) {
             Log.d(TAG, "closeDoor: " + doorIndex);
-            TransformManager manager = mModelViewer.getEngine().getTransformManager();
-            Map<Integer, float[]> sourceMap = mMatrixMap.get(doorIndex);
-            int[] entities = doorIndex == FRONT_LEFT_DOOR ? LEFT_DOOR_ENTITIES : RIGHT_DOOR_ENTITIES;
-            for (int entity : entities) {
-                int instance = manager.getInstance(entity);
-                float[] transform = sourceMap == null ? null : sourceMap.get(instance);
-                if (transform != null) {
-                    manager.setTransform(instance, transform);
+            if (isOpened(doorIndex)) {
+                TransformManager manager = mModelViewer.getEngine().getTransformManager();
+                Map<Integer, float[]> sourceMap = mMatrixMap.get(doorIndex);
+                int[] entities = doorIndex == FRONT_LEFT_DOOR ? LEFT_DOOR_ENTITIES : RIGHT_DOOR_ENTITIES;
+                for (int entity : entities) {
+                    int instance = manager.getInstance(entity);
+                    float[] transform = sourceMap == null ? null : sourceMap.get(instance);
+                    if (transform != null) {
+                        manager.setTransform(instance, transform);
+                    }
                 }
+                doorOpenStatus.put(doorIndex, false);
             }
+        }
+
+        public boolean isOpened(int index) {
+            Boolean b = doorOpenStatus.get(index);
+            return b != null && b;
         }
     };
 }
