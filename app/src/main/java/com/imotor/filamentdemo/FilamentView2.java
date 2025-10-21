@@ -3,20 +3,33 @@ package com.imotor.filamentdemo;
 import android.annotation.SuppressLint;
 import android.content.Context;
 
+import android.content.res.AssetFileDescriptor;
+import android.content.res.AssetManager;
 import android.opengl.Matrix;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Choreographer;
 import android.view.SurfaceView;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import com.google.android.filament.Box;
+import com.google.android.filament.Colors;
 import com.google.android.filament.Engine;
+import com.google.android.filament.Entity;
 import com.google.android.filament.EntityManager;
 import com.google.android.filament.Filament;
+import com.google.android.filament.IndexBuffer;
 import com.google.android.filament.IndirectLight;
 import com.google.android.filament.LightManager;
+import com.google.android.filament.Material;
+import com.google.android.filament.MaterialInstance;
+import com.google.android.filament.RenderableManager;
 import com.google.android.filament.Scene;
 import com.google.android.filament.Skybox;
 import com.google.android.filament.TransformManager;
+import com.google.android.filament.VertexBuffer;
 import com.google.android.filament.View;
 import com.google.android.filament.android.UiHelper;
 import com.google.android.filament.gltfio.Animator;
@@ -32,9 +45,15 @@ import com.google.android.filament.utils.Utils;
 import java.io.IOException;
 import java.io.InputStream;
 
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.Channels;
+import java.nio.channels.ReadableByteChannel;
 import java.util.HashMap;
 import java.util.Map;
+
+import kotlin.jvm.functions.Function1;
 
 /**
  * @author Yan.Liangliang
@@ -87,6 +106,7 @@ public class FilamentView2 extends SurfaceView {
                 .orbitHomePosition(0, 0, 10)
                 .zoomSpeed(0.1f)
                 .viewport(getWidth(), getHeight())
+                .groundPlane(0, 0, 1, 0)
                 .build(Manipulator.Mode.ORBIT);
         mModelViewer = new ModelViewer(this, mEngine, helper, manipulator);
         // 触摸移动相机视角
@@ -113,11 +133,57 @@ public class FilamentView2 extends SurfaceView {
 
         getDefaultMatrix();
 
-//        addCarLight();
+        addCarLight();
+        addGround(mEngine, mModelViewer.getScene());
 
         new Thread(this::showModelInfo).start();
 
         Choreographer.getInstance().postFrameCallback(mFrameScheduler);
+    }
+
+    private void addGround(Engine engine, Scene scene) {
+
+
+        Log.d(TAG, "addGround: 1");
+        AssetManager manager = getContext().getAssets();
+        ByteBuffer byteBuffer = readAsset(manager, "groundShadow.filamat");
+        if (byteBuffer == null) {
+            return;
+        }
+        Log.d(TAG, "addGround: 2");
+        Material shadowMaterial = new Material.Builder()
+                .payload(byteBuffer, byteBuffer.remaining())
+                .build(engine);
+        Log.d(TAG, "addGround: 3");
+        MaterialInstance shadowInstance = shadowMaterial.getDefaultInstance();
+        AutomationEngine automationEngine = new AutomationEngine();
+        AutomationEngine.ViewerOptions options = automationEngine.getViewerOptions();
+        shadowInstance.setParameter("strength", options.groundShadowStrength);
+        shadowInstance.setParameter("baseColor", Colors.RgbaType.LINEAR, 0.8F, 0.8F, 0.8F, 0F);
+        shadowInstance.setParameter("metallic", 0F);
+        GroundFactory.createGroundPlane(engine, scene, shadowMaterial, 10, 10, 10, 1f);
+
+        IndexBuffer indexBuffer = new IndexBuffer.Builder().indexCount(6)
+                .bufferType(IndexBuffer.Builder.IndexType.USHORT)
+                .build(engine);
+
+    }
+
+    @Nullable
+    @SuppressWarnings("SameParameterValue")
+    private ByteBuffer readAsset(AssetManager assets, @NonNull String assetName) {
+        ByteBuffer dst = null;
+        try (AssetFileDescriptor fd = assets.openFd(assetName)) {
+            InputStream in = fd.createInputStream();
+            dst = ByteBuffer.allocate((int) fd.getLength());
+            final ReadableByteChannel src = Channels.newChannel(in);
+            src.read(dst);
+            src.close();
+            dst.rewind();
+        } catch (IOException e) {
+            Log.e(TAG, "readAsset: ", e);
+        }
+        return dst;
     }
 
     private void getDefaultMatrix() {
@@ -172,7 +238,7 @@ public class FilamentView2 extends SurfaceView {
 
         new LightManager.Builder(LightManager.Type.FOCUSED_SPOT)
                 // 白
-                .color(1.0f, 1.0f, 1f)
+                .color(1.0f, 0.95f, 0.8f)
                 .intensity(150_000.0f)
                 .castShadows(true)
                 // 内外锥角（度）
@@ -180,21 +246,35 @@ public class FilamentView2 extends SurfaceView {
                 // 指向前下方
                 .direction(3F, 0f, 0)
                 .position(3F, 0, 0)
+                .falloff(20F)
                 .build(engine, spotLight);
 
-//        // 设置位置
-//        TransformManager tm = engine.getTransformManager();
-//        int ti = tm.getInstance(spotLight);
-//
-//        float[] matrix = new float[16];
-//        Matrix.setIdentityM(matrix, 0);
-//
-//        // 比如车头偏上位置
-//        Matrix.translateM(matrix, 0, -10, 10, 10);
+        setEntityPosition(spotLight, engine, -0.8f, 0.5f, 2.0f);
 
-//        tm.setTransform(ti, matrix);
+        setEntityDirection(spotLight, engine, 0f, 0f, 1f);
 
         scene.addEntity(spotLight);
+    }
+
+    private void setEntityPosition(@Entity int entity, Engine engine, float x, float y, float z) {
+        TransformManager tm = engine.getTransformManager();
+        int inst = tm.getInstance(entity);
+        if (inst != 0) {
+            float[] matrix = new float[16];
+            Matrix.setIdentityM(matrix, 0);
+            Matrix.translateM(matrix, 0, x, y, z);
+            tm.setTransform(inst, matrix);
+        }
+    }
+
+    private void setEntityDirection(@Entity int entity, Engine engine, float dx, float dy, float dz) {
+        TransformManager tm = engine.getTransformManager();
+        int inst = tm.getInstance(entity);
+        if (inst != 0) {
+            float[] rot = new float[16];
+            Matrix.setLookAtM(rot, 0, 0, 0, 0, dx, dy, dz, 0, 1, 0);
+            tm.setTransform(inst, rot);
+        }
     }
 
     private void loadIBL() {
@@ -214,7 +294,7 @@ public class FilamentView2 extends SurfaceView {
             byte[] buffer = new byte[iblIs.available()];
             int length = iblIs.read(buffer);
             IndirectLight light = iblLoader.createIndirectLight(engine, ByteBuffer.wrap(buffer, 0, length), options);
-            light.setIntensity(30_000F);
+            light.setIntensity(50_000F);
             scene.setIndirectLight(light);
 
             // 设置天空盒
