@@ -8,7 +8,9 @@ import android.opengl.Matrix;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Choreographer;
+import android.view.MotionEvent;
 import android.view.SurfaceView;
+import android.view.View.OnTouchListener;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -108,11 +110,8 @@ public class FilamentView2 extends SurfaceView {
                 .build(Manipulator.Mode.ORBIT);
         mManipulator = manipulator;
         mModelViewer = new ModelViewer(this, mEngine, helper, manipulator);
-        // 触摸移动相机视角
-        setOnTouchListener((v, event) -> {
-            mModelViewer.onTouchEvent(event);
-            return true;
-        });
+        // 自定义触摸处理，拦截会导致相机穿地的手势
+        setOnTouchListener(new CameraGestureListener());
 
         View view = mModelViewer.getView();
         view.setShadowingEnabled(true);
@@ -141,8 +140,6 @@ public class FilamentView2 extends SurfaceView {
     }
 
     private void addGround(Engine engine, Scene scene) {
-        Log.d(TAG, "addGround: 开始创建地面");
-
         // 加载地面阴影材质
         AssetManager assetManager = getContext().getAssets();
         ByteBuffer matBuffer;
@@ -157,7 +154,6 @@ public class FilamentView2 extends SurfaceView {
             return;
         }
         Log.d(TAG, "addGround: 材质加载成功，大小=" + matBuffer.remaining());
-
         Material shadowMaterial;
         try {
             shadowMaterial = new Material.Builder()
@@ -182,15 +178,11 @@ public class FilamentView2 extends SurfaceView {
             float[] halfExtent = boundingBox.getHalfExtent();
             groundY = center[1] - halfExtent[1];
             mGroundY = groundY;
-            Log.d(TAG, "addGround: 包围盒 center=(" + center[0] + "," + center[1] + "," + center[2] + ")");
-            Log.d(TAG, "addGround: 包围盒 halfExtent=(" + halfExtent[0] + "," + halfExtent[1] + "," + halfExtent[2] + ")");
-            Log.d(TAG, "addGround: 计算出的地面 Y=" + groundY);
         } else {
             Log.e(TAG, "addGround: 模型资源为 null，无法获取包围盒");
         }
 
         int groundEntity = GroundFactory.createGroundPlane(engine, scene, shadowInstance, 10, 10, 10, groundY);
-        Log.d(TAG, "addGround: 地面实体创建完成，entity=" + groundEntity);
     }
 
     private void getDefaultMatrix() {
@@ -347,18 +339,171 @@ public class FilamentView2 extends SurfaceView {
     }
 
     /**
+     * 自定义相机手势处理器。
+     * 复刻 Filament GestureDetector 的逻辑，并在 ORBIT 手势的 grabUpdate 前
+     * 检查相机高度，阻止相机下压到地面以下。
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private class CameraGestureListener implements OnTouchListener {
+
+        private Gesture mCurrentGesture = Gesture.NONE;
+        // 上一次触摸坐标（Filament 坐标系：Y 轴朝上）
+        private float mPrevX0, mPrevY0, mPrevX1, mPrevY1;
+        private int mPrevCount;
+        // 用于手势识别的候选事件计数
+        private int mOrbitCount, mPanCount, mZoomCount;
+        private float mTentativeX, mTentativeY;
+        private float mTentativeSep;
+
+        private static final int CONFIDENCE_COUNT = 2;
+        private static final float PAN_CONFIDENCE_DIST = 4f;
+        private static final float ZOOM_CONFIDENCE_DIST = 10f;
+        private static final float ZOOM_SPEED = 1f / 10f;
+        // 相机最低高度限制：地面 Y + 此偏移量
+        private static final float CAMERA_MIN_HEIGHT_OFFSET = 1.0f;
+
+        @Override
+        public boolean onTouch(android.view.View v, android.view.MotionEvent event) {
+            int height = getHeight();
+            // 转换为 Filament 坐标系（Y 轴朝上）
+            float x0 = event.getPointerCount() >= 1 ? event.getX(0) : 0;
+            float y0 = event.getPointerCount() >= 1 ? height - event.getY(0) : 0;
+            float x1 = event.getPointerCount() >= 2 ? event.getX(1) : x0;
+            float y1 = event.getPointerCount() >= 2 ? height - event.getY(1) : y0;
+            int count = Math.min(event.getPointerCount(), 2);
+            float midX = (x0 + x1) / 2f;
+            float midY = (y0 + y1) / 2f;
+            float sep = (float) Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+
+            switch (event.getActionMasked()) {
+                case android.view.MotionEvent.ACTION_DOWN:
+                case android.view.MotionEvent.ACTION_POINTER_DOWN:
+                    // 指针数变化时重置手势
+                    if (mCurrentGesture != Gesture.NONE) {
+                        mManipulator.grabEnd();
+                        mCurrentGesture = Gesture.NONE;
+                    }
+                    mOrbitCount = 0;
+                    mPanCount = 0;
+                    mZoomCount = 0;
+                    mPrevX0 = x0;
+                    mPrevY0 = y0;
+                    mPrevX1 = x1;
+                    mPrevY1 = y1;
+                    mPrevCount = count;
+                    break;
+
+                case android.view.MotionEvent.ACTION_MOVE:
+                    // 指针数不匹配时取消手势
+                    if ((count != 1 && mCurrentGesture == Gesture.ORBIT) ||
+                            (count != 2 && mCurrentGesture == Gesture.PAN) ||
+                            (count != 2 && mCurrentGesture == Gesture.ZOOM)) {
+                        mManipulator.grabEnd();
+                        mCurrentGesture = Gesture.NONE;
+                        break;
+                    }
+
+                    if (mCurrentGesture == Gesture.ZOOM) {
+                        float prevSep = (float) Math.sqrt(
+                                (mPrevX1 - mPrevX0) * (mPrevX1 - mPrevX0) +
+                                        (mPrevY1 - mPrevY0) * (mPrevY1 - mPrevY0));
+                        mManipulator.scroll((int) midX, (int) midY, (prevSep - sep) * ZOOM_SPEED);
+                        mPrevX0 = x0;
+                        mPrevY0 = y0;
+                        mPrevX1 = x1;
+                        mPrevY1 = y1;
+                        break;
+                    }
+
+                    if (mCurrentGesture == Gesture.ORBIT || mCurrentGesture == Gesture.PAN) {
+                        // ORBIT 手势：检查是否会导致相机穿地
+                        if (mCurrentGesture == Gesture.ORBIT) {
+                            float[] pos = mModelViewer.getCamera().getPosition(new float[3]);
+                            float dy = y0 - mPrevY0;
+                            if (pos[1] <= mGroundY + CAMERA_MIN_HEIGHT_OFFSET && dy > 0) {
+                                // 相机已在地面限制高度，且手指向上滑（下压相机），拦截
+                                // 重置 grabBegin 防止 Manipulator 内部积累偏移导致松手后大幅跳动
+                                mManipulator.grabEnd();
+                                mManipulator.grabBegin((int) x0, (int) y0, false);
+                                mPrevX0 = x0;
+                                mPrevY0 = y0;
+                                break;
+                            }
+                        }
+                        mManipulator.grabUpdate((int) midX, (int) midY);
+                        mPrevX0 = x0;
+                        mPrevY0 = y0;
+                        mPrevX1 = x1;
+                        mPrevY1 = y1;
+                        break;
+                    }
+
+                    // 手势识别阶段
+                    if (count == 1) {
+                        mOrbitCount++;
+                        mTentativeX = x0;
+                        mTentativeY = y0;
+                    }
+                    if (count == 2) {
+                        mPanCount++;
+                        mZoomCount++;
+                        mTentativeX = midX;
+                        mTentativeY = midY;
+                        mTentativeSep = sep;
+                    }
+
+                    if (mOrbitCount >= CONFIDENCE_COUNT) {
+                        mManipulator.grabBegin((int) x0, (int) y0, false);
+                        mCurrentGesture = Gesture.ORBIT;
+                    } else if (mZoomCount >= CONFIDENCE_COUNT &&
+                            Math.abs(sep - mTentativeSep) > ZOOM_CONFIDENCE_DIST) {
+                        mCurrentGesture = Gesture.ZOOM;
+                        mPrevX0 = x0;
+                        mPrevY0 = y0;
+                        mPrevX1 = x1;
+                        mPrevY1 = y1;
+                    } else if (mPanCount >= CONFIDENCE_COUNT) {
+                        float dx = midX - mTentativeX;
+                        float dy = midY - mTentativeY;
+                        if ((float) Math.sqrt(dx * dx + dy * dy) > PAN_CONFIDENCE_DIST) {
+                            mManipulator.grabBegin((int) midX, (int) midY, true);
+                            mCurrentGesture = Gesture.PAN;
+                        }
+                    }
+                    break;
+
+                case android.view.MotionEvent.ACTION_UP:
+                case android.view.MotionEvent.ACTION_CANCEL:
+                    mManipulator.grabEnd();
+                    mCurrentGesture = Gesture.NONE;
+                    mOrbitCount = 0;
+                    mPanCount = 0;
+                    mZoomCount = 0;
+                    break;
+            }
+            return true;
+        }
+
+        /**
+         * 判断相机是否已经接近地面限制
+         */
+        private boolean isCameraAtGroundLimit() {
+            if (mManipulator == null) return false;
+            float[] eye = new float[3];
+            float[] target = new float[3];
+            float[] up = new float[3];
+            mManipulator.getLookAt(eye, target, up);
+            return eye[1] <= mGroundY + 0.3f;
+        }
+    }
+
+    private enum Gesture {NONE, ORBIT, PAN, ZOOM}
+
+    /**
      * 渲染回调
      */
     private final class FrameCallback implements Choreographer.FrameCallback {
         private Long startTime;
-        // 相机位置和目标点缓冲区，避免每帧分配
-        private final float[] mEye = new float[3];
-        private final float[] mTarget = new float[3];
-        private final float[] mUp = new float[3];
-        // 相机最低高度 = 地面 Y + 安全边距
-        private static final float CAMERA_MIN_HEIGHT_OFFSET = 0.1f;
-        // 上一帧安全的相机 Bookmark（相机在地面以上时保存）
-        private com.google.android.filament.utils.Bookmark mLastSafeBookmark = null;
 
         @Override
         public void doFrame(long frameTimeNanos) {
@@ -371,38 +516,9 @@ public class FilamentView2 extends SurfaceView {
             }
 
             choreographer.postFrameCallback(this);
-
-            // 调用 render() 让 ModelViewer 内部完成资源加载、场景填充、相机更新
             mModelViewer.render(frameTimeNanos);
-
-            // render() 内部已经调用了 camera.lookAt()，但渲染也已完成。
-            // 在此修正相机，使下一帧渲染前相机处于正确位置。
-            // 由于 render() 每帧都会用 Manipulator 覆盖相机，
-            // 我们需要在 render() 之后、下一帧 render() 之前修正，
-            // 并且下一帧 render() 会再次覆盖——所以每帧都要修正。
-            clampCameraAboveGround();
         }
 
-        /**
-         * 每帧检查相机位置，若低于地面则跳回上一个安全位置。
-         * 在 render() 之后调用，修正 Manipulator 内部状态，使下一帧生效。
-         */
-        private void clampCameraAboveGround() {
-            if (mManipulator == null) return;
-
-            mManipulator.getLookAt(mEye, mTarget, mUp);
-
-            float minY = mGroundY + CAMERA_MIN_HEIGHT_OFFSET;
-            if (mEye[1] >= minY) {
-                // 相机在安全高度，保存当前 Bookmark
-                mLastSafeBookmark = mManipulator.getCurrentBookmark();
-            } else {
-                // 相机低于地面，跳回上一个安全位置
-                if (mLastSafeBookmark != null) {
-                    mManipulator.jumpToBookmark(mLastSafeBookmark);
-                }
-            }
-        }
     }
 
     private final DoorController doorController = new DoorController() {
