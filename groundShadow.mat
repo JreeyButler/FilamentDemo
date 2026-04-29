@@ -1,23 +1,19 @@
 material {
     name : GroundShadow,
-    shadingModel : unlit,
     blending : transparent,
+    shadingModel : unlit,
     shadowMultiplier : true,
-    culling : none,
-    colorWrite : true,
-    depthWrite : false,
-
     parameters : [
-        { type : float,  name : strength },
-        { type : float4, name : baseColor },
-        { type : float,  name : metallic }
-    ]
+        {
+            type : float,
+            name : strength
+        }
+    ],
 }
 
 fragment {
     void material(inout MaterialInputs material) {
         prepareMaterial(material);
-        material.baseColor = materialParams.baseColor;
-        material.baseColor.a = (1.0 - materialParams.strength) * material.baseColor.a;
+        material.baseColor = vec4(0.0, 0.0, 0.0, materialParams.strength);
     }
 }
