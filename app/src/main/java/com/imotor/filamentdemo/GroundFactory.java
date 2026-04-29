@@ -82,7 +82,7 @@ public class GroundFactory {
     public static int createGroundPlane(
             Engine engine,
             Scene scene,
-            Material shadowMaterial,
+            MaterialInstance shadowMaterialInstance,
             float boundingExtentX,
             float boundingExtentY,
             float boundingExtentZ,
@@ -155,7 +155,7 @@ public class GroundFactory {
                         new float[]{0, 0, 0},
                         new float[]{extentX, 1e-4f, extentZ})
                 )
-                .material(0, shadowMaterial.getDefaultInstance())
+                .material(0, shadowMaterialInstance)
                 .geometry(0, RenderableManager.PrimitiveType.TRIANGLES,
                         vertexBuffer, indexBuffer)
                 .culling(false)
@@ -163,14 +163,14 @@ public class GroundFactory {
                 .castShadows(false)
                 .build(engine, groundEntity);
 
-        // 8. Transform: Y = minY
+        // 8. Transform: 地面 Y 坐标对齐模型轮子底部
         TransformManager tcm = engine.getTransformManager();
         int ti = tcm.getInstance(groundEntity);
         float[] transform = new float[]{
                 1, 0, 0, 0,
                 0, 1, 0, 0,
                 0, 0, 1, 0,
-                0, minY, -4, 1
+                0, minY, 0, 1
         };
         tcm.setTransform(ti, transform);
 

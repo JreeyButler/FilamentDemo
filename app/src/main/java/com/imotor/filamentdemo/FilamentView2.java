@@ -3,7 +3,6 @@ package com.imotor.filamentdemo;
 import android.annotation.SuppressLint;
 import android.content.Context;
 
-import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.opengl.Matrix;
 import android.util.AttributeSet;
@@ -15,12 +14,10 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import com.google.android.filament.Box;
-import com.google.android.filament.Colors;
 import com.google.android.filament.Engine;
 import com.google.android.filament.Entity;
 import com.google.android.filament.EntityManager;
 import com.google.android.filament.Filament;
-import com.google.android.filament.IndexBuffer;
 import com.google.android.filament.IndirectLight;
 import com.google.android.filament.LightManager;
 import com.google.android.filament.Material;
@@ -29,7 +26,6 @@ import com.google.android.filament.RenderableManager;
 import com.google.android.filament.Scene;
 import com.google.android.filament.Skybox;
 import com.google.android.filament.TransformManager;
-import com.google.android.filament.VertexBuffer;
 import com.google.android.filament.View;
 import com.google.android.filament.android.UiHelper;
 import com.google.android.filament.gltfio.Animator;
@@ -45,15 +41,9 @@ import com.google.android.filament.utils.Utils;
 import java.io.IOException;
 import java.io.InputStream;
 
-import java.nio.Buffer;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.channels.Channels;
-import java.nio.channels.ReadableByteChannel;
 import java.util.HashMap;
 import java.util.Map;
-
-import kotlin.jvm.functions.Function1;
 
 /**
  * @author Yan.Liangliang
@@ -142,48 +132,55 @@ public class FilamentView2 extends SurfaceView {
     }
 
     private void addGround(Engine engine, Scene scene) {
+        Log.d(TAG, "addGround: 开始创建地面");
 
-
-        Log.d(TAG, "addGround: 1");
-        AssetManager manager = getContext().getAssets();
-        ByteBuffer byteBuffer = readAsset(manager, "groundShadow.filamat");
-        if (byteBuffer == null) {
+        // 加载地面阴影材质
+        AssetManager assetManager = getContext().getAssets();
+        ByteBuffer matBuffer;
+        try (InputStream in = assetManager.open("groundShadow.filamat")) {
+            byte[] bytes = new byte[in.available()];
+            int length = in.read(bytes);
+            matBuffer = ByteBuffer.allocateDirect(length);
+            matBuffer.put(bytes, 0, length);
+            matBuffer.rewind();
+        } catch (IOException e) {
+            Log.e(TAG, "addGround: 加载材质失败", e);
             return;
         }
-        Log.d(TAG, "addGround: 2");
-        Material shadowMaterial = new Material.Builder()
-                .payload(byteBuffer, byteBuffer.remaining())
-                .build(engine);
-        Log.d(TAG, "addGround: 3");
+        Log.d(TAG, "addGround: 材质加载成功，大小=" + matBuffer.remaining());
+
+        Material shadowMaterial;
+        try {
+            shadowMaterial = new Material.Builder()
+                    .payload(matBuffer, matBuffer.remaining())
+                    .build(engine);
+        } catch (Exception e) {
+            Log.e(TAG, "addGround: 创建材质失败，跳过地面创建", e);
+            return;
+        }
         MaterialInstance shadowInstance = shadowMaterial.getDefaultInstance();
         AutomationEngine automationEngine = new AutomationEngine();
         AutomationEngine.ViewerOptions options = automationEngine.getViewerOptions();
+        // strength 是材质自定义参数，控制阴影强度
         shadowInstance.setParameter("strength", options.groundShadowStrength);
-        shadowInstance.setParameter("baseColor", Colors.RgbaType.LINEAR, 0.8F, 0.8F, 0.8F, 0F);
-        shadowInstance.setParameter("metallic", 0F);
-        GroundFactory.createGroundPlane(engine, scene, shadowMaterial, 10, 10, 10, 1f);
 
-        IndexBuffer indexBuffer = new IndexBuffer.Builder().indexCount(6)
-                .bufferType(IndexBuffer.Builder.IndexType.USHORT)
-                .build(engine);
-
-    }
-
-    @Nullable
-    @SuppressWarnings("SameParameterValue")
-    private ByteBuffer readAsset(AssetManager assets, @NonNull String assetName) {
-        ByteBuffer dst = null;
-        try (AssetFileDescriptor fd = assets.openFd(assetName)) {
-            InputStream in = fd.createInputStream();
-            dst = ByteBuffer.allocate((int) fd.getLength());
-            final ReadableByteChannel src = Channels.newChannel(in);
-            src.read(dst);
-            src.close();
-            dst.rewind();
-        } catch (IOException e) {
-            Log.e(TAG, "readAsset: ", e);
+        // 读取模型包围盒，计算轮子底部 Y 坐标，使地面刚好贴合轮子
+        float groundY = 0f;
+        FilamentAsset asset = mModelViewer.getAsset();
+        if (asset != null) {
+            Box boundingBox = asset.getBoundingBox();
+            float[] center = boundingBox.getCenter();
+            float[] halfExtent = boundingBox.getHalfExtent();
+            groundY = center[1] - halfExtent[1];
+            Log.d(TAG, "addGround: 包围盒 center=(" + center[0] + "," + center[1] + "," + center[2] + ")");
+            Log.d(TAG, "addGround: 包围盒 halfExtent=(" + halfExtent[0] + "," + halfExtent[1] + "," + halfExtent[2] + ")");
+            Log.d(TAG, "addGround: 计算出的地面 Y=" + groundY);
+        } else {
+            Log.e(TAG, "addGround: 模型资源为 null，无法获取包围盒");
         }
-        return dst;
+
+        int groundEntity = GroundFactory.createGroundPlane(engine, scene, shadowInstance, 10, 10, 10, groundY);
+        Log.d(TAG, "addGround: 地面实体创建完成，entity=" + groundEntity);
     }
 
     private void getDefaultMatrix() {
