@@ -64,6 +64,14 @@ public class FilamentView2 extends SurfaceView {
     private static final int[] LEFT_DOOR_ENTITIES = {38, 39, 40};
     private static final int[] RIGHT_DOOR_ENTITIES = {54, 55, 56};
     private Map<Integer, Map<Integer, float[]>> mMatrixMap;
+    /**
+     * 地面 Y 坐标，用于限制相机不低于地面
+     */
+    private float mGroundY = 0f;
+    /**
+     * 相机操控器，用于读取当前相机位置
+     */
+    private Manipulator mManipulator;
 
     static {
         Filament.init();
@@ -98,6 +106,7 @@ public class FilamentView2 extends SurfaceView {
                 .viewport(getWidth(), getHeight())
                 .groundPlane(0, 0, 1, 0)
                 .build(Manipulator.Mode.ORBIT);
+        mManipulator = manipulator;
         mModelViewer = new ModelViewer(this, mEngine, helper, manipulator);
         // 触摸移动相机视角
         setOnTouchListener((v, event) -> {
@@ -172,6 +181,7 @@ public class FilamentView2 extends SurfaceView {
             float[] center = boundingBox.getCenter();
             float[] halfExtent = boundingBox.getHalfExtent();
             groundY = center[1] - halfExtent[1];
+            mGroundY = groundY;
             Log.d(TAG, "addGround: 包围盒 center=(" + center[0] + "," + center[1] + "," + center[2] + ")");
             Log.d(TAG, "addGround: 包围盒 halfExtent=(" + halfExtent[0] + "," + halfExtent[1] + "," + halfExtent[2] + ")");
             Log.d(TAG, "addGround: 计算出的地面 Y=" + groundY);
@@ -341,10 +351,17 @@ public class FilamentView2 extends SurfaceView {
      */
     private final class FrameCallback implements Choreographer.FrameCallback {
         private Long startTime;
+        // 相机位置和目标点缓冲区，避免每帧分配
+        private final float[] mEye = new float[3];
+        private final float[] mTarget = new float[3];
+        private final float[] mUp = new float[3];
+        // 相机最低高度 = 地面 Y + 安全边距
+        private static final float CAMERA_MIN_HEIGHT_OFFSET = 0.1f;
+        // 上一帧安全的相机 Bookmark（相机在地面以上时保存）
+        private com.google.android.filament.utils.Bookmark mLastSafeBookmark = null;
 
         @Override
         public void doFrame(long frameTimeNanos) {
-
             if (mAnimator != null && LOOP_ANIMATION) {
                 // 循环播放模型的动画
                 startTime = startTime == null ? frameTimeNanos : startTime;
@@ -354,7 +371,37 @@ public class FilamentView2 extends SurfaceView {
             }
 
             choreographer.postFrameCallback(this);
+
+            // 调用 render() 让 ModelViewer 内部完成资源加载、场景填充、相机更新
             mModelViewer.render(frameTimeNanos);
+
+            // render() 内部已经调用了 camera.lookAt()，但渲染也已完成。
+            // 在此修正相机，使下一帧渲染前相机处于正确位置。
+            // 由于 render() 每帧都会用 Manipulator 覆盖相机，
+            // 我们需要在 render() 之后、下一帧 render() 之前修正，
+            // 并且下一帧 render() 会再次覆盖——所以每帧都要修正。
+            clampCameraAboveGround();
+        }
+
+        /**
+         * 每帧检查相机位置，若低于地面则跳回上一个安全位置。
+         * 在 render() 之后调用，修正 Manipulator 内部状态，使下一帧生效。
+         */
+        private void clampCameraAboveGround() {
+            if (mManipulator == null) return;
+
+            mManipulator.getLookAt(mEye, mTarget, mUp);
+
+            float minY = mGroundY + CAMERA_MIN_HEIGHT_OFFSET;
+            if (mEye[1] >= minY) {
+                // 相机在安全高度，保存当前 Bookmark
+                mLastSafeBookmark = mManipulator.getCurrentBookmark();
+            } else {
+                // 相机低于地面，跳回上一个安全位置
+                if (mLastSafeBookmark != null) {
+                    mManipulator.jumpToBookmark(mLastSafeBookmark);
+                }
+            }
         }
     }
 
