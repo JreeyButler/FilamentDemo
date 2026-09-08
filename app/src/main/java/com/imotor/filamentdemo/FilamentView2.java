@@ -12,7 +12,6 @@ import android.view.SurfaceView;
 
 import com.google.android.filament.Box;
 import com.google.android.filament.Engine;
-import com.google.android.filament.Entity;
 import com.google.android.filament.EntityManager;
 import com.google.android.filament.Filament;
 import com.google.android.filament.IndirectLight;
@@ -68,6 +67,20 @@ public class FilamentView2 extends SurfaceView {
      * 相机操控器，用于读取当前相机位置
      */
     private Manipulator mManipulator;
+    /**
+     * 前照灯 entity（左右两颗），默认不加入场景（关灯状态）
+     */
+    private final int[] mFrontLightEntities = {-1, -1};
+    private boolean mFrontLightOn = false;
+    /**
+     * lit 材质，供地面和调试辅助共用
+     */
+    private Material mLitMaterial;
+    /**
+     * 调试辅助，生产环境设为 false
+     */
+    private static final boolean DEBUG_SHOW_AXES = true;
+    private DebugHelper mDebugHelper;
 
     static {
         Filament.init();
@@ -125,8 +138,9 @@ public class FilamentView2 extends SurfaceView {
 
         getDefaultMatrix();
 
-        addCarLight();
         addGround(mEngine, mModelViewer.getScene());
+        // 车灯在模型包围盒计算完成后（addGround 内已读取包围盒）再创建
+        addCarLight();
 
         new Thread(this::showModelInfo).start();
 
@@ -134,49 +148,44 @@ public class FilamentView2 extends SurfaceView {
     }
 
     private void addGround(Engine engine, Scene scene) {
-        // 加载地面阴影材质
         AssetManager assetManager = getContext().getAssets();
-        ByteBuffer matBuffer;
-        try (InputStream in = assetManager.open("groundShadow.filamat")) {
-            byte[] bytes = new byte[in.available()];
-            int length = in.read(bytes);
-            matBuffer = ByteBuffer.allocateDirect(length);
-            matBuffer.put(bytes, 0, length);
-            matBuffer.rewind();
-        } catch (IOException e) {
-            Log.e(TAG, "addGround: 加载材质失败", e);
-            return;
-        }
-        Log.d(TAG, "addGround: 材质加载成功，大小=" + matBuffer.remaining());
-        Material shadowMaterial;
-        try {
-            shadowMaterial = new Material.Builder()
-                    .payload(matBuffer, matBuffer.remaining())
-                    .build(engine);
-        } catch (Exception e) {
-            Log.e(TAG, "addGround: 创建材质失败，跳过地面创建", e);
-            return;
-        }
-        MaterialInstance shadowInstance = shadowMaterial.getDefaultInstance();
-        AutomationEngine automationEngine = new AutomationEngine();
-        AutomationEngine.ViewerOptions options = automationEngine.getViewerOptions();
-        // strength 是材质自定义参数，控制阴影强度
-        shadowInstance.setParameter("strength", options.groundShadowStrength);
 
-        // 读取模型包围盒，计算轮子底部 Y 坐标，使地面刚好贴合轮子
+        // 读取模型包围盒，计算轮子底部 Y 坐标
         float groundY = 0f;
+        float[] halfExtent = {10f, 1f, 10f}; // 默认值
         FilamentAsset asset = mModelViewer.getAsset();
         if (asset != null) {
             Box boundingBox = asset.getBoundingBox();
             float[] center = boundingBox.getCenter();
-            float[] halfExtent = boundingBox.getHalfExtent();
+            halfExtent = boundingBox.getHalfExtent();
             groundY = center[1] - halfExtent[1];
             mGroundY = groundY;
         } else {
             Log.e(TAG, "addGround: 模型资源为 null，无法获取包围盒");
         }
 
-        int groundEntity = GroundFactory.createGroundPlane(engine, scene, shadowInstance, 10, 10, 10, groundY);
+        // ── 1. lit 不透明地面（接受动态光照，显示车灯光斑）────────────────
+        try (InputStream in = assetManager.open("lit.filamat")) {
+            byte[] bytes = new byte[in.available()];
+            int length = in.read(bytes);
+            ByteBuffer buf = ByteBuffer.allocateDirect(length);
+            buf.put(bytes, 0, length);
+            buf.rewind();
+            Material litMaterial = new Material.Builder().payload(buf, buf.remaining()).build(engine);
+            mLitMaterial = litMaterial; // 保存供调试辅助使用
+            MaterialInstance litInstance = litMaterial.getDefaultInstance();
+            // 浅灰色地面，roughness=1（漫反射），metallic=0
+            litInstance.setParameter("baseColor", 0.45f, 0.45f, 0.45f);
+            litInstance.setParameter("roughness", 1.0f);
+            litInstance.setParameter("metallic", 0.0f);
+            GroundFactory.createLitGroundPlane(engine, scene, litInstance,
+                    halfExtent[0], halfExtent[2], groundY);
+            Log.d(TAG, "addGround: lit 地面创建成功");
+        } catch (Exception e) {
+            Log.e(TAG, "addGround: lit 地面创建失败", e);
+        }
+
+        // ── 透明阴影层已移除，仅保留 lit 不透明地面 ────────────────
     }
 
     private void getDefaultMatrix() {
@@ -223,51 +232,189 @@ public class FilamentView2 extends SurfaceView {
         }
     }
 
+    // ── 车头灯几何（实测自 cartoon_sports_car.glb，+X = 车头、+Y 向上、+Z 朝左）──────
+    // 车鼻最前端 x≈2.13；前灯带 x≈1.86、y 0.62~0.87、横向横跨 z≈±0.87。
+    // 注意：模型自带 6.4m×6.4m 底座（y=0），会把 asset 包围盒撑大到 x≈±3.19，
+    // 因此不能从包围盒推算灯位，只能按上面实测值放灯。
+    private static final float HEADLIGHT_X = 2.40f;     // 灯位：车鼻前约 0.25m，光锥不会先吃到车身
+    private static final float HEADLIGHT_Y = 1.05f;     // 略高于灯带，减少贴地近场刺眼区
+    private static final float HEADLIGHT_Z_L = 0.62f;   // 左灯（模型 +Z 侧）
+    private static final float HEADLIGHT_Z_R = -0.62f;  // 右灯
+    private static final float BEAM_RANGE = 7.0f;       // 光斑落点距灯的水平距离（决定光轴下压俯角）
+    private static final float LIGHT_INTENSITY = 3_000_000f;  // cd，真机看效果后调整
+    private static final float CONE_INNER_DEG = 6f;     // 内锥（亮心）
+    private static final float CONE_OUTER_DEG = 14f;    // 外锥（光斑边缘）
+    // 左右灯各向外偏约 2.6°，让两束光在远处分开成两个独立光斑，而不是中间糊成一团
+    private static final float BEAM_TOE_Z = 0.045f;
+
     private void addCarLight() {
-        int spotLight = EntityManager.get().create();
-
         Engine engine = mModelViewer.getEngine();
+
+        float[] baseZ = {HEADLIGHT_Z_L, HEADLIGHT_Z_R};
+        for (int i = 0; i < mFrontLightEntities.length; i++) {
+            int entity = EntityManager.get().create();
+            mFrontLightEntities[i] = entity;
+            new LightManager.Builder(LightManager.Type.FOCUSED_SPOT)
+                    // 暖白光
+                    .color(1.0f, 0.96f, 0.88f)
+                    .intensity(LIGHT_INTENSITY)
+                    .castShadows(true)
+                    .spotLightCone(CONE_INNER_DEG, CONE_OUTER_DEG)
+                    .falloff(30f)
+                    .build(engine, entity);
+            mLightPos[i][0] = HEADLIGHT_X;
+            mLightPos[i][1] = HEADLIGHT_Y;
+            mLightPos[i][2] = baseZ[i];
+        }
+
+        // 光轴朝车前方下压，落点在地面上（灯位与俯角是否合适以调试标记为准）
+        updateBeamDirection();
+        applyLightPosition();
+        applyLightDirection();
+
+        // 调试标记：黄色=灯位，橙色=地面落点（光轴延长线），绿/红=车鼻/车尾
+        if (DEBUG_SHOW_AXES && mLitMaterial != null) {
+            Scene scene = mModelViewer.getScene();
+            mDebugHelper = new DebugHelper(engine, scene, mLitMaterial);
+            mDebugHelper.addAxes(0, 0, 0, 6f);
+            for (int i = 0; i < mFrontLightEntities.length; i++) {
+                mDebugHelper.addMarker(mLightPos[i][0], mLightPos[i][1], mLightPos[i][2], 0.22f);
+                mDebugHelper.addMarker(mLightPos[i][0] + BEAM_RANGE, mGroundY + 0.03f,
+                        mLightPos[i][2], 0.18f, 1f, 0.5f, 0f);
+                // 洋红圆盘：按含外展角的光轴算出的预测光斑落点（辅助校准）
+                float toe = i == 0 ? BEAM_TOE_Z : -BEAM_TOE_Z;
+                float hx = mLightDirX;
+                float hz = mLightDirZ + toe;
+                float hl = (float) Math.sqrt(hx * hx + hz * hz);
+                mDebugHelper.addGroundDisc(
+                        mLightPos[i][0] + hx / hl * BEAM_RANGE,
+                        mLightPos[i][2] + hz / hl * BEAM_RANGE,
+                        1.2f, 1f, 0f, 1f);
+            }
+            mDebugHelper.addMarker(2.13f, 0.6f, 0f, 0.12f, 0f, 1f, 0f);   // 车鼻参考
+            mDebugHelper.addMarker(-1.98f, 0.6f, 0f, 0.12f, 1f, 0f, 0f);  // 车尾参考
+            Log.d(TAG, "addCarLight: 已创建左右两颗 FOCUSED_SPOT 前照灯");
+        }
+    }
+
+    /**
+     * 依据灯位与地面落点重新计算光轴方向（下压俯角 = atan(灯高 / BEAM_RANGE)）
+     */
+    private void updateBeamDirection() {
+        float dx = BEAM_RANGE;
+        float dy = mGroundY - HEADLIGHT_Y;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        mLightDirX = dx / len;
+        mLightDirY = dy / len;
+        mLightDirZ = 0f;
+    }
+
+    /**
+     * 开启或关闭车头前照灯
+     *
+     * @param enabled true = 开灯，false = 关灯
+     */
+    public void setFrontLightEnabled(boolean enabled) {
+        if (mFrontLightEntities[0] == -1) return;
+        Log.d(TAG, "setFrontLightEnabled: " + enabled + ", entities="
+                + mFrontLightEntities[0] + "," + mFrontLightEntities[1]);
         Scene scene = mModelViewer.getScene();
-
-        new LightManager.Builder(LightManager.Type.FOCUSED_SPOT)
-                // 白
-                .color(1.0f, 0.95f, 0.8f)
-                .intensity(150_000.0f)
-                .castShadows(true)
-                // 内外锥角（度）
-                .spotLightCone(5.0f, 25.0f)
-                // 指向前下方
-                .direction(3F, 0f, 0)
-                .position(3F, 0, 0)
-                .falloff(20F)
-                .build(engine, spotLight);
-
-        setEntityPosition(spotLight, engine, -0.8f, 0.5f, 2.0f);
-
-        setEntityDirection(spotLight, engine, 0f, 0f, 1f);
-
-        scene.addEntity(spotLight);
-    }
-
-    private void setEntityPosition(@Entity int entity, Engine engine, float x, float y, float z) {
-        TransformManager tm = engine.getTransformManager();
-        int inst = tm.getInstance(entity);
-        if (inst != 0) {
-            float[] matrix = new float[16];
-            Matrix.setIdentityM(matrix, 0);
-            Matrix.translateM(matrix, 0, x, y, z);
-            tm.setTransform(inst, matrix);
+        if (enabled && !mFrontLightOn) {
+            for (int e : mFrontLightEntities) {
+                scene.addEntity(e);
+            }
+            mFrontLightOn = true;
+        } else if (!enabled && mFrontLightOn) {
+            for (int e : mFrontLightEntities) {
+                scene.removeEntity(e);
+            }
+            mFrontLightOn = false;
         }
     }
 
-    private void setEntityDirection(@Entity int entity, Engine engine, float dx, float dy, float dz) {
-        TransformManager tm = engine.getTransformManager();
-        int inst = tm.getInstance(entity);
-        if (inst != 0) {
-            float[] rot = new float[16];
-            Matrix.setLookAtM(rot, 0, 0, 0, 0, dx, dy, dz, 0, 1, 0);
-            tm.setTransform(inst, rot);
+    public boolean isFrontLightOn() {
+        return mFrontLightOn;
+    }
+
+    /**
+     * 当前光轴方向（两颗灯共用，可实时微调）
+     */
+    private float mLightDirX;
+    private float mLightDirY;
+    private float mLightDirZ;
+
+    public float[] getLightDirection() {
+        return new float[]{mLightDirX, mLightDirY, mLightDirZ};
+    }
+
+    /**
+     * 动态调整光轴方向分量（正/负步进），调整后立即生效。
+     */
+    public void adjustLightDirection(float dx, float dy, float dz) {
+        mLightDirX += dx;
+        mLightDirY += dy;
+        mLightDirZ += dz;
+        applyLightDirection();
+    }
+
+    public void resetLightDirection() {
+        updateBeamDirection();
+        applyLightDirection();
+    }
+
+    private void applyLightDirection() {
+        if (mFrontLightEntities[0] == -1) return;
+        LightManager lm = mModelViewer.getEngine().getLightManager();
+        for (int i = 0; i < mFrontLightEntities.length; i++) {
+            // 左灯(i=0, +Z 侧)向外(+Z)偏，右灯向 -Z 偏，形成外展的两束光
+            float toe = i == 0 ? BEAM_TOE_Z : -BEAM_TOE_Z;
+            lm.setDirection(lm.getInstance(mFrontLightEntities[i]),
+                    mLightDirX, mLightDirY, mLightDirZ + toe);
         }
+        Log.d(TAG, String.format("applyLightDirection: (%.2f, %.2f, %.2f)",
+                mLightDirX, mLightDirY, mLightDirZ));
+    }
+
+    // ── 光源位置调整（左右灯同步位移） ───────────────────────────────────────
+
+    /** 当前两颗灯的位置（运行时可调整） */
+    private final float[][] mLightPos = {{0f, 0f, 0f}, {0f, 0f, 0f}};
+
+    public float[] getLightPosition() {
+        return new float[]{mLightPos[0][0], mLightPos[0][1], mLightPos[0][2]};
+    }
+
+    /**
+     * 动态调整光源位置（delta 为步进值，左右灯同步），调整后立即生效。
+     */
+    public void adjustLightPosition(float dx, float dy, float dz) {
+        for (float[] p : mLightPos) {
+            p[0] += dx;
+            p[1] += dy;
+            p[2] += dz;
+        }
+        applyLightPosition();
+    }
+
+    public void resetLightPosition() {
+        mLightPos[0][0] = HEADLIGHT_X;
+        mLightPos[0][1] = HEADLIGHT_Y;
+        mLightPos[0][2] = HEADLIGHT_Z_L;
+        mLightPos[1][0] = HEADLIGHT_X;
+        mLightPos[1][1] = HEADLIGHT_Y;
+        mLightPos[1][2] = HEADLIGHT_Z_R;
+        applyLightPosition();
+    }
+
+    private void applyLightPosition() {
+        if (mFrontLightEntities[0] == -1) return;
+        LightManager lm = mModelViewer.getEngine().getLightManager();
+        for (int i = 0; i < mFrontLightEntities.length; i++) {
+            float[] p = mLightPos[i];
+            lm.setPosition(lm.getInstance(mFrontLightEntities[i]), p[0], p[1], p[2]);
+        }
+        Log.d(TAG, String.format("applyLightPosition: (%.2f, %.2f, %.2f)",
+                mLightPos[0][0], mLightPos[0][1], mLightPos[0][2]));
     }
 
     private void loadIBL() {
@@ -287,6 +434,7 @@ public class FilamentView2 extends SurfaceView {
             byte[] buffer = new byte[iblIs.available()];
             int length = iblIs.read(buffer);
             IndirectLight light = iblLoader.createIndirectLight(engine, ByteBuffer.wrap(buffer, 0, length), options);
+            // 环境光强度保持与原始效果一致（50k lux），车灯光斑靠聚光灯本身强度体现
             light.setIntensity(50_000F);
             scene.setIndirectLight(light);
 
@@ -348,13 +496,19 @@ public class FilamentView2 extends SurfaceView {
         private int mOrbitCount, mPanCount, mZoomCount;
         private float mTentativeX, mTentativeY;
         private float mTentativeSep;
+        // 传给 Manipulator 的虚拟坐标（用于阻尼累积）
+        private float mManipX, mManipY;
+        private float mManipMidX, mManipMidY;
 
         private static final int CONFIDENCE_COUNT = 2;
         private static final float PAN_CONFIDENCE_DIST = 4f;
         private static final float ZOOM_CONFIDENCE_DIST = 10f;
-        private static final float ZOOM_SPEED = 1f / 10f;
+        private static final float ZOOM_SPEED = 1f / 20f;      // 降低缩放灵敏度（原 1/10）
         // 相机最低高度限制：地面 Y + 此偏移量
         private static final float CAMERA_MIN_HEIGHT_OFFSET = 1.0f;
+        // 旋转/平移阻尼系数：0=完全不动，1=无阻尼，值越小滑动越慢
+        private static final float ORBIT_DAMPING = 0.25f;
+        private static final float PAN_DAMPING = 0.25f;
 
         @Override
         public boolean onTouch(android.view.View v, android.view.MotionEvent event) {
@@ -410,8 +564,8 @@ public class FilamentView2 extends SurfaceView {
                     }
 
                     if (mCurrentGesture == Gesture.ORBIT || mCurrentGesture == Gesture.PAN) {
-                        // ORBIT 手势：检查是否会导致相机穿地
                         if (mCurrentGesture == Gesture.ORBIT) {
+                            // ORBIT 手势：检查是否会导致相机穿地
                             float[] pos = mModelViewer.getCamera().getPosition(new float[3]);
                             float dy = y0 - mPrevY0;
                             if (pos[1] <= mGroundY + CAMERA_MIN_HEIGHT_OFFSET && dy > 0) {
@@ -419,12 +573,24 @@ public class FilamentView2 extends SurfaceView {
                                 // 重置 grabBegin 防止 Manipulator 内部积累偏移导致松手后大幅跳动
                                 mManipulator.grabEnd();
                                 mManipulator.grabBegin((int) x0, (int) y0, false);
+                                mManipX = x0;
+                                mManipY = y0;
                                 mPrevX0 = x0;
                                 mPrevY0 = y0;
                                 break;
                             }
+                            // 应用旋转阻尼：只传入实际位移的一部分，使旋转更平滑缓慢
+                            mManipX += (x0 - mPrevX0) * ORBIT_DAMPING;
+                            mManipY += (y0 - mPrevY0) * ORBIT_DAMPING;
+                            mManipulator.grabUpdate((int) mManipX, (int) mManipY);
+                        } else {
+                            // PAN 手势：应用平移阻尼
+                            float prevMidX = (mPrevX0 + mPrevX1) / 2f;
+                            float prevMidY = (mPrevY0 + mPrevY1) / 2f;
+                            mManipMidX += (midX - prevMidX) * PAN_DAMPING;
+                            mManipMidY += (midY - prevMidY) * PAN_DAMPING;
+                            mManipulator.grabUpdate((int) mManipMidX, (int) mManipMidY);
                         }
-                        mManipulator.grabUpdate((int) midX, (int) midY);
                         mPrevX0 = x0;
                         mPrevY0 = y0;
                         mPrevX1 = x1;
@@ -448,6 +614,8 @@ public class FilamentView2 extends SurfaceView {
 
                     if (mOrbitCount >= CONFIDENCE_COUNT) {
                         mManipulator.grabBegin((int) x0, (int) y0, false);
+                        mManipX = x0;
+                        mManipY = y0;
                         mCurrentGesture = Gesture.ORBIT;
                     } else if (mZoomCount >= CONFIDENCE_COUNT &&
                             Math.abs(sep - mTentativeSep) > ZOOM_CONFIDENCE_DIST) {
@@ -461,6 +629,8 @@ public class FilamentView2 extends SurfaceView {
                         float dy = midY - mTentativeY;
                         if ((float) Math.sqrt(dx * dx + dy * dy) > PAN_CONFIDENCE_DIST) {
                             mManipulator.grabBegin((int) midX, (int) midY, true);
+                            mManipMidX = midX;
+                            mManipMidY = midY;
                             mCurrentGesture = Gesture.PAN;
                         }
                     }

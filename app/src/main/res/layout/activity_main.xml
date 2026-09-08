@@ -8,6 +8,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- 左上角：车门 + 车灯 + 调试面板入口 -->
     <LinearLayout
         android:id="@+id/left_door_layout"
         android:layout_width="wrap_content"
@@ -15,32 +16,129 @@
         android:layout_margin="6dp"
         android:orientation="vertical">
 
-        <Button
-            android:id="@+id/open_left_door"
+        <ToggleButton
+            android:id="@+id/toggle_left_door"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="open left door" />
+            android:checked="false"
+            android:textOff="@string/open_left_door"
+            android:textOn="@string/close_left_door" />
+
+        <ToggleButton
+            android:id="@+id/toggle_right_door"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="false"
+            android:textOff="@string/open_right_door"
+            android:textOn="@string/close_right_door" />
+
+        <ToggleButton
+            android:id="@+id/toggle_front_light"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="false"
+            android:textOff="@string/open_front_light"
+            android:textOn="@string/close_front_light" />
 
         <Button
-            android:id="@+id/close_left_door"
+            android:id="@+id/btn_toggle_light_dir_panel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="close left door" />
+            android:text="@string/light_dir_adjust" />
 
         <Button
-            android:id="@+id/open_right_door"
+            android:id="@+id/btn_toggle_light_pos_panel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="open right door" />
+            android:text="@string/light_pos_adjust" />
 
-        <Button
-            android:id="@+id/close_right_door"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="close right door" />
     </LinearLayout>
 
+    <!-- 光源方向调节面板（右下角） -->
+    <LinearLayout
+        android:id="@+id/light_dir_panel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:layout_alignParentBottom="true"
+        android:layout_margin="6dp"
+        android:background="#CC000000"
+        android:orientation="vertical"
+        android:padding="4dp"
+        android:visibility="gone">
 
+        <TextView
+            android:id="@+id/tv_light_dir"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="dir: (1.0, -0.3, 0.0)"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:text="X" android:textColor="#FF4444" android:textStyle="bold" />
+            <Button android:id="@+id/btn_dir_x_dec" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="-" android:textSize="16sp" />
+            <Button android:id="@+id/btn_dir_x_inc" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="+" android:textSize="16sp" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:text="Y" android:textColor="#44FF44" android:textStyle="bold" />
+            <Button android:id="@+id/btn_dir_y_dec" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="-" android:textSize="16sp" />
+            <Button android:id="@+id/btn_dir_y_inc" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="+" android:textSize="16sp" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:text="Z" android:textColor="#4444FF" android:textStyle="bold" />
+            <Button android:id="@+id/btn_dir_z_dec" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="-" android:textSize="16sp" />
+            <Button android:id="@+id/btn_dir_z_inc" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="+" android:textSize="16sp" />
+        </LinearLayout>
+
+        <Button android:id="@+id/btn_dir_reset" android:layout_width="wrap_content" android:layout_height="36dp" android:padding="0dp" android:text="@string/reset" android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 光源位置调节面板（右下角，与方向面板互斥显示） -->
+    <LinearLayout
+        android:id="@+id/light_pos_panel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentEnd="true"
+        android:layout_alignParentBottom="true"
+        android:layout_margin="6dp"
+        android:background="#CC000000"
+        android:orientation="vertical"
+        android:padding="4dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tv_light_pos"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="pos: (0.0, 0.0, 0.0)"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp" />
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:text="X" android:textColor="#FF4444" android:textStyle="bold" />
+            <Button android:id="@+id/btn_pos_x_dec" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="-" android:textSize="16sp" />
+            <Button android:id="@+id/btn_pos_x_inc" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="+" android:textSize="16sp" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:text="Y" android:textColor="#44FF44" android:textStyle="bold" />
+            <Button android:id="@+id/btn_pos_y_dec" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="-" android:textSize="16sp" />
+            <Button android:id="@+id/btn_pos_y_inc" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="+" android:textSize="16sp" />
+        </LinearLayout>
+
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+            <TextView android:layout_width="20dp" android:layout_height="wrap_content" android:text="Z" android:textColor="#4444FF" android:textStyle="bold" />
+            <Button android:id="@+id/btn_pos_z_dec" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="-" android:textSize="16sp" />
+            <Button android:id="@+id/btn_pos_z_inc" android:layout_width="44dp" android:layout_height="36dp" android:padding="0dp" android:text="+" android:textSize="16sp" />
+        </LinearLayout>
+
+        <Button android:id="@+id/btn_pos_reset" android:layout_width="wrap_content" android:layout_height="36dp" android:padding="0dp" android:text="@string/reset" android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 以下为隐藏的位置调试控件（保留备用） -->
     <LinearLayout
         android:id="@+id/x_control_layout"
         android:layout_width="wrap_content"
@@ -48,36 +146,11 @@
         android:layout_margin="6dp"
         android:orientation="vertical"
         android:visibility="gone">
-
-        <Button
-            android:id="@+id/x_pos_max"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="x_max" />
-
-        <Button
-            android:id="@+id/x_pos_increase"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="x+" />
-
-        <Button
-            android:id="@+id/x_pos_reset"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="x0" />
-
-        <Button
-            android:id="@+id/x_pos_reduce"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="x-" />
-
-        <Button
-            android:id="@+id/x_pos_min"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="x_min" />
+        <Button android:id="@+id/x_pos_max" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="x_max" />
+        <Button android:id="@+id/x_pos_increase" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="x+" />
+        <Button android:id="@+id/x_pos_reset" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="x0" />
+        <Button android:id="@+id/x_pos_reduce" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="x-" />
+        <Button android:id="@+id/x_pos_min" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="x_min" />
     </LinearLayout>
 
     <LinearLayout
@@ -88,36 +161,11 @@
         android:layout_toEndOf="@id/x_control_layout"
         android:orientation="vertical"
         android:visibility="gone">
-
-        <Button
-            android:id="@+id/y_pos_max"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="y_max" />
-
-        <Button
-            android:id="@+id/y_pos_increase"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="y+" />
-
-        <Button
-            android:id="@+id/y_pos_reset"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="y0" />
-
-        <Button
-            android:id="@+id/y_pos_reduce"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="y-" />
-
-        <Button
-            android:id="@+id/y_pos_min"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="y_min" />
+        <Button android:id="@+id/y_pos_max" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="y_max" />
+        <Button android:id="@+id/y_pos_increase" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="y+" />
+        <Button android:id="@+id/y_pos_reset" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="y0" />
+        <Button android:id="@+id/y_pos_reduce" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="y-" />
+        <Button android:id="@+id/y_pos_min" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="y_min" />
     </LinearLayout>
 
     <LinearLayout
@@ -128,38 +176,11 @@
         android:layout_toEndOf="@id/y_control_layout"
         android:orientation="vertical"
         android:visibility="gone">
-
-
-        <Button
-            android:id="@+id/z_pos_max"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="z_max" />
-
-        <Button
-            android:id="@+id/z_pos_increase"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="z+" />
-
-        <Button
-            android:id="@+id/z_pos_reset"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="z0" />
-
-        <Button
-            android:id="@+id/z_pos_reduce"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="z-" />
-
-        <Button
-            android:id="@+id/z_pos_min"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="z_min" />
+        <Button android:id="@+id/z_pos_max" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="z_max" />
+        <Button android:id="@+id/z_pos_increase" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="z+" />
+        <Button android:id="@+id/z_pos_reset" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="z0" />
+        <Button android:id="@+id/z_pos_reduce" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="z-" />
+        <Button android:id="@+id/z_pos_min" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="z_min" />
     </LinearLayout>
-
 
 </RelativeLayout>

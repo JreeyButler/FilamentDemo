@@ -1,3 +1,16 @@
 <resources>
     <string name="app_name">FilamentDemo</string>
+
+    <!-- Door controls -->
+    <string name="open_left_door">Open Left Door</string>
+    <string name="close_left_door">Close Left Door</string>
+    <string name="open_right_door">Open Right Door</string>
+    <string name="close_right_door">Close Right Door</string>
+
+    <!-- Light controls -->
+    <string name="open_front_light">Open Front Light</string>
+    <string name="close_front_light">Close Front Light</string>
+    <string name="light_dir_adjust">Light Dir</string>
+    <string name="light_pos_adjust">Light Pos</string>
+    <string name="reset">Reset</string>
 </resources>
