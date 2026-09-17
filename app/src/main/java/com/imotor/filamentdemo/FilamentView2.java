@@ -13,14 +13,17 @@ import android.view.SurfaceView;
 import com.google.android.filament.Box;
 import com.google.android.filament.Engine;
 import com.google.android.filament.EntityManager;
-import com.google.android.filament.Filament;
+import com.google.android.filament.IndexBuffer;
 import com.google.android.filament.IndirectLight;
+import com.google.android.filament.Filament;
 import com.google.android.filament.LightManager;
 import com.google.android.filament.Material;
 import com.google.android.filament.MaterialInstance;
+import com.google.android.filament.RenderableManager;
 import com.google.android.filament.Scene;
 import com.google.android.filament.Skybox;
 import com.google.android.filament.TransformManager;
+import com.google.android.filament.VertexBuffer;
 import com.google.android.filament.View;
 import com.google.android.filament.android.UiHelper;
 import com.google.android.filament.gltfio.Animator;
@@ -37,6 +40,7 @@ import java.io.IOException;
 import java.io.InputStream;
 
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -79,7 +83,7 @@ public class FilamentView2 extends SurfaceView {
     /**
      * 调试辅助，生产环境设为 false
      */
-    private static final boolean DEBUG_SHOW_AXES = true;
+    private static final boolean DEBUG_SHOW_AXES = false;
     private DebugHelper mDebugHelper;
 
     static {
@@ -131,8 +135,13 @@ public class FilamentView2 extends SurfaceView {
         options.quality = View.QualityLevel.MEDIUM;
         view.setDynamicResolutionOptions(options);
 
+        // ── 展厅级画面设置（ACES/Bloom/SSR/抗锯齿）──
+        applyShowRoomLook(view);
+
         // 加载模型
         loadModel();
+        // 车漆清漆层
+        applyCarClearCoat();
         // 环境光
         loadIBL();
 
@@ -142,9 +151,299 @@ public class FilamentView2 extends SurfaceView {
         // 车灯在模型包围盒计算完成后（addGround 内已读取包围盒）再创建
         addCarLight();
 
+        // ── 展厅氛围：主光/轮廓光 + 自发光灯条 ──
+        addShowroomLights();
+        addLightBars();
+
         new Thread(this::showModelInfo).start();
 
         Choreographer.getInstance().postFrameCallback(mFrameScheduler);
+    }
+
+    // ── 展厅级画面设置 ────────────────────────────────────────────────────
+
+    /**
+     * SSR 反射开关（部分低端机性能吃紧，可整体关掉）
+     */
+    private static final boolean SHOWROOM_SSR_ENABLED = true;
+
+    /**
+     * 展厅级调校：ACES 色调映射、Bloom 辉光、SSR 屏幕空间反射、MSAA 抗锯齿。
+     */
+    private void applyShowRoomLook(View view) {
+        // ACES：高光有自然滚降，暗部更扎实，整体更"电影感"
+        view.setToneMapping(View.ToneMapping.ACES);
+
+        // 内置 Bloom：灯条、车灯、漆面高光形成辉光，是"炫酷感"的来源之一
+        // 初始强度为 0，由开场动画渐亮到 INTRO_BLOOM_STRENGTH
+        mBloomOptions.enabled = true;
+        mBloomOptions.strength = 0f;
+        mBloomOptions.threshold = false;
+        view.setBloomOptions(mBloomOptions);
+
+        // SSR：地面（低 roughness 材质）反射车身
+        if (SHOWROOM_SSR_ENABLED) {
+            View.ScreenSpaceReflectionsOptions ssr = new View.ScreenSpaceReflectionsOptions();
+            ssr.enabled = true;
+            ssr.maxDistance = 4.0f;
+            ssr.thickness = 0.1f;
+            ssr.bias = 0.02f;
+            ssr.stride = 2.0f;
+            view.setScreenSpaceReflectionsOptions(ssr);
+        }
+
+        // MSAA 抗锯齿，边缘更干净
+        View.MultiSampleAntiAliasingOptions msaa = new View.MultiSampleAntiAliasingOptions();
+        msaa.enabled = true;
+        view.setMultiSampleAntiAliasingOptions(msaa);
+    }
+
+    /**
+     * 给 glb 车漆材质追加清漆层（clearcoat）。
+     * 仅对具备 clearCoat 参数的材质实例生效；不含该参数的实例会静默告警并跳过。
+     */
+    private void applyCarClearCoat() {
+        FilamentAsset asset = mModelViewer.getAsset();
+        if (asset == null) {
+            return;
+        }
+        Engine engine = mModelViewer.getEngine();
+        RenderableManager rm = engine.getRenderableManager();
+        for (int entity : asset.getRenderableEntities()) {
+            int ri = rm.getInstance(entity);
+            if (ri == 0) {
+                continue;
+            }
+            for (int prim = 0; prim < rm.getPrimitiveCount(ri); prim++) {
+                MaterialInstance mi = rm.getMaterialInstanceAt(ri, prim);
+                if (mi == null || mi.getMaterial() == null) {
+                    continue;
+                }
+                // hasParameter 为 false 时直接跳过：setParameter 对未知参数会触发 native panic
+                if (!mi.getMaterial().hasParameter("clearCoat")
+                        || !mi.getMaterial().hasParameter("clearCoatRoughness")) {
+                    continue;
+                }
+                mi.setParameter("clearCoat", 1.0f);
+                mi.setParameter("clearCoatRoughness", 0.08f);
+            }
+        }
+    }
+
+    // ── 开场"灯光渐亮"动画 ────────────────────────────────────────────────
+
+    private static final float INTRO_DURATION_S = 3.0f;
+    /**
+     * 开场结束时各光源的目标强度
+     */
+    private static final float INTRO_KEY_LIGHT = 120_000f;
+    private static final float INTRO_RIM_LIGHT = 60_000f;
+    private static final float INTRO_IBL = 30_000f;
+    private static final float INTRO_BLOOM_STRENGTH = 0.28f;
+
+    private boolean mIntroPlaying = true;
+    private long mIntroStartTimeNs = -1;
+    private IndirectLight mIndirectLight;
+    private final View.BloomOptions mBloomOptions = new View.BloomOptions();
+    private LightManager mLights;
+
+    /**
+     * hero 化入场：画面从全黑开始，主光/轮廓光/环境光/Bloom 在 3 秒内渐亮。
+     */
+    private void updateIntro(long frameTimeNanos, Engine engine, View view) {
+        if (mIntroStartTimeNs < 0) {
+            mIntroStartTimeNs = frameTimeNanos;
+        }
+        float t = (frameTimeNanos - mIntroStartTimeNs) / 1_000_000_000f;
+        float p = Math.min(t / INTRO_DURATION_S, 1f);
+        // power3.out 缓动，前快后慢
+        float e = 1f - (1f - p) * (1f - p) * (1f - p);
+
+        if (mLights != null && mShowroomLightEntities[0] != -1) {
+            mLights.setIntensity(mLights.getInstance(mShowroomLightEntities[0]), INTRO_KEY_LIGHT * e);
+            mLights.setIntensity(mLights.getInstance(mShowroomLightEntities[1]), INTRO_RIM_LIGHT * e);
+        }
+        if (mIndirectLight != null) {
+            mIndirectLight.setIntensity(INTRO_IBL * e);
+        }
+        mBloomOptions.enabled = true;
+        mBloomOptions.strength = INTRO_BLOOM_STRENGTH * e;
+        mBloomOptions.threshold = false;
+        view.setBloomOptions(mBloomOptions);
+
+        if (p >= 1f) {
+            mIntroPlaying = false;
+            Log.d(TAG, "updateIntro: 开场灯光渐亮动画结束");
+        }
+    }
+
+    // ── 展厅主光 / 轮廓光 ─────────────────────────────────────────────────
+
+    private final int[] mShowroomLightEntities = {-1, -1};
+
+    /**
+     * 展厅布光：主光（暖白顶光，制造明暗层次）+ 冷色轮廓光（勾出车身边缘）。
+     */
+    private void addShowroomLights() {
+        Engine engine = mModelViewer.getEngine();
+        Scene scene = mModelViewer.getScene();
+
+        // 主光：从左前上方压下，车身左前亮、右后暗，形成对比
+        // 初期强度 0，入场动画里渐亮
+        int key = EntityManager.get().create();
+        mShowroomLightEntities[0] = key;
+        new LightManager.Builder(LightManager.Type.SUN)
+                .color(1.0f, 0.97f, 0.92f)
+                .intensity(INTRO_KEY_LIGHT)
+                .direction(-0.45f, -0.8f, -0.4f)
+                .castShadows(true)
+                .build(engine, key);
+        mLights = engine.getLightManager();
+        mLights.setIntensity(mLights.getInstance(key), 0f);
+        scene.addEntity(key);
+
+        // 轮廓光：冷蓝色从右后方逆着打，勾亮车身边缘
+        int rim = EntityManager.get().create();
+        mShowroomLightEntities[1] = rim;
+        new LightManager.Builder(LightManager.Type.DIRECTIONAL)
+                .color(0.65f, 0.8f, 1.0f)
+                .intensity(INTRO_RIM_LIGHT)
+                .direction(0.35f, -0.25f, 0.9f)
+                .build(engine, rim);
+        mLights.setIntensity(mLights.getInstance(rim), 0f);
+        scene.addEntity(rim);
+    }
+
+    // ── 自发光灯条（unlit 高亮几何 + Bloom 发光） ─────────────────────────
+
+    /**
+     * 自发光材质（emissive.filamat）
+     */
+    private Material mEmissiveMaterial;
+    /**
+     * 灯条 entity 列表（含两条顶灯带 + 一块尾部柔光板）
+     */
+    private final int[] mLightBarEntities = new int[3];
+
+    /**
+     * 展厅灯条：两根车顶上方长条灯带 + 尾部一块冷白柔光板，
+     * 模拟 su7-replica 的 StartRoom 灯带氛围。
+     */
+    private void addLightBars() {
+        Engine engine = mModelViewer.getEngine();
+        Scene scene = mModelViewer.getScene();
+
+        try (InputStream in = getContext().getAssets().open("emissive.filamat")) {
+            byte[] bytes = new byte[in.available()];
+            int length = in.read(bytes);
+            ByteBuffer buf = ByteBuffer.allocateDirect(length);
+            buf.put(bytes, 0, length);
+            buf.rewind();
+            mEmissiveMaterial = new Material.Builder().payload(buf, buf.remaining()).build(engine);
+        } catch (Exception e) {
+            Log.e(TAG, "addLightBars: emissive 材质加载失败", e);
+            return;
+        }
+
+        float barY = mGroundY + 3.2f;
+
+        // 顶灯带①（车左侧上方，暖白）
+        MaterialInstance bar1 = mEmissiveMaterial.createInstance();
+        bar1.setParameter("glowColor", 1.0f, 0.96f, 0.92f);
+        bar1.setParameter("intensity", 18f);
+        mLightBarEntities[0] = createEmissiveQuad(engine, scene, bar1,
+                0f, barY, 2.6f, 14f, 0.35f, ORIENT_DOWN);
+
+        // 顶灯带②（车右侧上方，暖白）
+        MaterialInstance bar2 = mEmissiveMaterial.createInstance();
+        bar2.setParameter("glowColor", 1.0f, 0.96f, 0.92f);
+        bar2.setParameter("intensity", 18f);
+        mLightBarEntities[1] = createEmissiveQuad(engine, scene, bar2,
+                0f, barY, -2.6f, 14f, 0.35f, ORIENT_DOWN);
+
+        // 尾部柔光板（车后方竖立的大面积冷白面板，提供背景氛围 + 反射内容）
+        MaterialInstance softbox = mEmissiveMaterial.createInstance();
+        softbox.setParameter("glowColor", 0.75f, 0.85f, 1.0f);
+        softbox.setParameter("intensity", 6f);
+        mLightBarEntities[2] = createEmissiveQuad(engine, scene, softbox,
+                -5.5f, mGroundY + 1.8f, 0f, 7.0f, 3.6f, ORIENT_FACING_X);
+    }
+
+    private static final int ORIENT_DOWN = 0;       // 水平面，朝下
+    private static final int ORIENT_FACING_X = 1;   // 竖平面，法线朝 +X
+
+    /**
+     * 创建一块自发光四边形（双面渲染）。
+     *
+     * @param cx/cy/cz 中心点
+     * @param w        第一轴尺寸
+     * @param h        第二轴尺寸
+     * @param orient   ORIENT_DOWN（XY 内容沿 X/Z 展开）或 ORIENT_FACING_X（沿 Z/Y 展开）
+     */
+    private int createEmissiveQuad(Engine engine, Scene scene, MaterialInstance instance,
+                                   float cx, float cy, float cz,
+                                   float w, float h, int orient) {
+        float hw = w / 2f, hh = h / 2f;
+        float[] v;
+        if (orient == ORIENT_DOWN) {
+            v = new float[]{
+                    cx - hw, cy, cz - hh,
+                    cx - hw, cy, cz + hh,
+                    cx + hw, cy, cz + hh,
+                    cx + hw, cy, cz - hh
+            };
+        } else {
+            v = new float[]{
+                    cx, cy - hh, cz - hw,
+                    cx, cy - hh, cz + hw,
+                    cx, cy + hh, cz + hw,
+                    cx, cy + hh, cz - hw
+            };
+        }
+        short[] indices = {0, 1, 2, 2, 3, 0};
+
+        VertexBuffer vertexBuffer = new VertexBuffer.Builder()
+                .bufferCount(2)
+                .vertexCount(4)
+                .attribute(VertexBuffer.VertexAttribute.POSITION, 0,
+                        VertexBuffer.AttributeType.FLOAT3, 0, 3 * 4)
+                .attribute(VertexBuffer.VertexAttribute.TANGENTS, 1,
+                        VertexBuffer.AttributeType.SHORT4, 0, 4 * 2)
+                .normalized(VertexBuffer.VertexAttribute.TANGENTS)
+                .build(engine);
+
+        // unlit 材质不参与光照，TBN 恒定即可
+        short[] tbn = {32767, 0, 32767, 32767, 32767, 0, 32767, 32767,
+                32767, 0, 32767, 32767, 32767, 0, 32767, 32767};
+
+        ByteBuffer vb = ByteBuffer.allocateDirect(v.length * 4).order(ByteOrder.nativeOrder());
+        vb.asFloatBuffer().put(v);
+        vertexBuffer.setBufferAt(engine, 0, vb);
+
+        ByteBuffer tbnBuf = ByteBuffer.allocateDirect(tbn.length * 2).order(ByteOrder.nativeOrder());
+        tbnBuf.asShortBuffer().put(tbn);
+        vertexBuffer.setBufferAt(engine, 1, tbnBuf);
+
+        IndexBuffer indexBuffer = new IndexBuffer.Builder()
+                .indexCount(indices.length)
+                .bufferType(IndexBuffer.Builder.IndexType.USHORT)
+                .build(engine);
+        ByteBuffer ib = ByteBuffer.allocateDirect(indices.length * 2).order(ByteOrder.nativeOrder());
+        ib.asShortBuffer().put(indices);
+        indexBuffer.setBuffer(engine, ib);
+
+        int entity = EntityManager.get().create();
+        new RenderableManager.Builder(1)
+                .boundingBox(new Box(new float[]{cx, cy, cz}, new float[]{hw, Math.max(hh, 1e-3f), hw}))
+                .material(0, instance)
+                .geometry(0, RenderableManager.PrimitiveType.TRIANGLES, vertexBuffer, indexBuffer)
+                .culling(false)     // 双面可见，从任何角度都能看到灯条
+                .receiveShadows(false)
+                .castShadows(false)
+                .build(engine, entity);
+
+        scene.addEntity(entity);
+        return entity;
     }
 
     private void addGround(Engine engine, Scene scene) {
@@ -174,9 +473,10 @@ public class FilamentView2 extends SurfaceView {
             Material litMaterial = new Material.Builder().payload(buf, buf.remaining()).build(engine);
             mLitMaterial = litMaterial; // 保存供调试辅助使用
             MaterialInstance litInstance = litMaterial.getDefaultInstance();
-            // 浅灰色地面，roughness=1（漫反射），metallic=0
-            litInstance.setParameter("baseColor", 0.45f, 0.45f, 0.45f);
-            litInstance.setParameter("roughness", 1.0f);
+            // 展厅深色地板：暗色哑光基色 + 低 roughness，主反射交给 SSR（映出车身）
+            // metallic 设 0，避免中性 IBL 把地面照成亮银色
+            litInstance.setParameter("baseColor", 0.03f, 0.032f, 0.042f);
+            litInstance.setParameter("roughness", 0.30f);
             litInstance.setParameter("metallic", 0.0f);
             GroundFactory.createLitGroundPlane(engine, scene, litInstance,
                     halfExtent[0], halfExtent[2], groundY);
@@ -425,8 +725,7 @@ public class FilamentView2 extends SurfaceView {
             return;
         }
 
-        try (InputStream iblIs = context.getAssets().open("neutral/neutral_ibl.ktx");
-             InputStream skyboxIs = context.getAssets().open("neutral/env_skybox.ktx")) {
+        try (InputStream iblIs = context.getAssets().open("neutral/neutral_ibl.ktx")) {
             KTX1Loader iblLoader = KTX1Loader.INSTANCE;
             KTX1Loader.Options options = new KTX1Loader.Options();
 
@@ -434,14 +733,16 @@ public class FilamentView2 extends SurfaceView {
             byte[] buffer = new byte[iblIs.available()];
             int length = iblIs.read(buffer);
             IndirectLight light = iblLoader.createIndirectLight(engine, ByteBuffer.wrap(buffer, 0, length), options);
-            // 环境光强度保持与原始效果一致（50k lux），车灯光斑靠聚光灯本身强度体现
-            light.setIntensity(50_000F);
+            // 环境光：目标 30k lux，初始 0 由入场动画渐亮
+            mIndirectLight = light;
+            light.setIntensity(0f);
             scene.setIndirectLight(light);
 
-            // 设置天空盒
-            buffer = new byte[skyboxIs.available()];
-            length = skyboxIs.read(buffer);
-            Skybox skybox = iblLoader.createSkybox(engine, ByteBuffer.wrap(buffer, 0, length), options);
+            // 天空盒：暗房纯色（深黑微带蓝灰），突出灯条与车身
+            // （原 env_skybox.ktx 灰色环境与展厅氛围冲突，保留备用）
+            Skybox skybox = new Skybox.Builder()
+                    .color(0.012f, 0.014f, 0.02f, 1f)
+                    .build(engine);
             scene.setSkybox(skybox);
 
             // 设置纯色的天空盒
@@ -671,6 +972,10 @@ public class FilamentView2 extends SurfaceView {
 
         @Override
         public void doFrame(long frameTimeNanos) {
+            if (mIntroPlaying) {
+                updateIntro(frameTimeNanos, mEngine, mModelViewer.getView());
+            }
+
             if (mAnimator != null && LOOP_ANIMATION) {
                 // 循环播放模型的动画
                 startTime = startTime == null ? frameTimeNanos : startTime;

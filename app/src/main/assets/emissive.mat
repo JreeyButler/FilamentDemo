@@ -1,0 +1,25 @@
+material {
+    name : emissive,
+
+    // 自发光材质：不受光照，直接输出高亮颜色（乘 intensity 让颜色超出 1.0，驱动 Bloom 辉光）
+    shadingModel : unlit,
+
+    parameters : [
+        {
+            type : float3,
+            name : glowColor
+        },
+        {
+            type : float,
+            name : intensity
+        }
+    ],
+}
+
+fragment {
+    void material(inout MaterialInputs material) {
+        prepareMaterial(material);
+
+        material.baseColor.rgb = materialParams.glowColor * materialParams.intensity;
+    }
+}
