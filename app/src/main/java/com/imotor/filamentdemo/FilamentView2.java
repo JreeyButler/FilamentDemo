@@ -478,10 +478,18 @@ public class FilamentView2 extends SurfaceView {
     }
 
     /**
-     * 开启/关闭转向灯（开启后自动闪烁）
+     * 开启/关闭左转向灯（开启后自动闪烁）
      */
-    public void setTurnSignalEnabled(boolean enabled) {
-        mCarLights.setTurnSignalEnabled(enabled);
+    public void setTurnSignalLeft(boolean enabled) {
+        mCarLights.setTurnSignalLeft(enabled);
+        wakeUp();
+    }
+
+    /**
+     * 开启/关闭右转向灯（开启后自动闪烁）
+     */
+    public void setTurnSignalRight(boolean enabled) {
+        mCarLights.setTurnSignalRight(enabled);
         wakeUp();
     }
 

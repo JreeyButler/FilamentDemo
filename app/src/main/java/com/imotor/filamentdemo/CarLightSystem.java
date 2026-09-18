@@ -54,9 +54,10 @@ public final class CarLightSystem {
      */
     private static final float TAIL_BRAKE_STRENGTH = 32f;
     /**
-     * 转向灯材质名（模型侧拆分生成）
+     * 左右转向灯材质名（模型侧拆分生成）
      */
-    private static final String TURN_MATERIAL_NAME = "CARRERA_4096_TURNSIGNALS";
+    private static final String TURN_MATERIAL_NAME_L = "CARRERA_4096_TURNSIGNALS_L";
+    private static final String TURN_MATERIAL_NAME_R = "CARRERA_4096_TURNSIGNALS_R";
     /**
      * 转向灯点亮时的自发光强度（emissiveFactor 已由模型设为琥珀色）
      */
@@ -85,9 +86,10 @@ public final class CarLightSystem {
      */
     private final List<MaterialInstance> mTailMaterialInstances = new ArrayList<>();
     /**
-     * 模型转向灯的材质实例
+     * 模型左/右转向灯的材质实例
      */
-    private final List<MaterialInstance> mTurnMaterialInstances = new ArrayList<>();
+    private final List<MaterialInstance> mTurnLeftInstances = new ArrayList<>();
+    private final List<MaterialInstance> mTurnRightInstances = new ArrayList<>();
     /**
      * 尾灯红色点光 entity（左右各一颗），默认不加入场景
      */
@@ -98,10 +100,15 @@ public final class CarLightSystem {
      */
     private boolean mBrakeOn = false;
 
-    // ── 转向灯闪烁状态 ────────────────────────────────────────────────────
-    private boolean mTurnSignalOn = false;
-    private long mTurnLastToggleNs = -1;
-    private boolean mTurnPhaseOn = false;
+    // ── 转向灯闪烁状态（左右独立）─────────────────────────────────────────
+    private static final class BlinkState {
+        boolean on = false;
+        long lastToggleNs = -1;
+        boolean phase = false;
+    }
+
+    private final BlinkState mLeftBlink = new BlinkState();
+    private final BlinkState mRightBlink = new BlinkState();
 
     /**
      * 当前光轴方向（两颗灯共用，可实时微调）
@@ -183,13 +190,19 @@ public final class CarLightSystem {
                         }
                         mi.setParameter("emissiveStrength", 0f);
                         mTailMaterialInstances.add(mi);
-                    } else if (name.contains(TURN_MATERIAL_NAME)) {
-                        // 转向灯：琥珀色，默认灭，由 update() 控制闪烁
+                    } else if (name.contains(TURN_MATERIAL_NAME_L)) {
+                        // 左转向灯：琥珀色，默认灭，由 update() 控制闪烁
                         if (mi.getMaterial().hasParameter("emissiveFactor")) {
                             mi.setParameter("emissiveFactor", 1.0f, 0.45f, 0.0f);
                         }
                         mi.setParameter("emissiveStrength", 0f);
-                        mTurnMaterialInstances.add(mi);
+                        mTurnLeftInstances.add(mi);
+                    } else if (name.contains(TURN_MATERIAL_NAME_R)) {
+                        if (mi.getMaterial().hasParameter("emissiveFactor")) {
+                            mi.setParameter("emissiveFactor", 1.0f, 0.45f, 0.0f);
+                        }
+                        mi.setParameter("emissiveStrength", 0f);
+                        mTurnRightInstances.add(mi);
                     }
                 }
             }
@@ -200,7 +213,8 @@ public final class CarLightSystem {
         } else {
             Log.d(TAG, "setupRearLights: 尾灯材质实例 " + mTailMaterialInstances.size() + " 个");
         }
-        Log.d(TAG, "setupRearLights: 转向灯材质实例 " + mTurnMaterialInstances.size() + " 个");
+        Log.d(TAG, "setupRearLights: 转向灯材质实例 左 " + mTurnLeftInstances.size()
+                + " / 右 " + mTurnRightInstances.size());
 
         // 两颗红色点光，制造灯罩向车身/地面的光溢出
         float[] baseZ = {REAR_GLOW_Z, -REAR_GLOW_Z};
@@ -290,54 +304,80 @@ public final class CarLightSystem {
     }
 
     /**
-     * 开启/关闭转向灯（开启后由 update() 按周期闪烁）。
+     * 开启/关闭左转向灯（开启后由 update() 按周期闪烁）。
      */
-    public void setTurnSignalEnabled(boolean enabled) {
-        if (mTurnMaterialInstances.isEmpty()) {
-            Log.w(TAG, "setTurnSignalEnabled: 无转向灯材质实例");
+    public void setTurnSignalLeft(boolean enabled) {
+        if (mTurnLeftInstances.isEmpty()) {
+            Log.w(TAG, "setTurnSignalLeft: 无左转向灯材质实例");
             return;
         }
-        Log.d(TAG, "setTurnSignalEnabled: " + enabled);
-        mTurnSignalOn = enabled;
-        if (enabled) {
-            // 立即点亮，并重置闪烁计时
-            mTurnLastToggleNs = -1;
-            mTurnPhaseOn = true;
-            applyTurn(true);
-        } else {
-            applyTurn(false);
-            mTurnLastToggleNs = -1;
-            mTurnPhaseOn = false;
-        }
-    }
-
-    public boolean isTurnSignalOn() {
-        return mTurnSignalOn;
+        Log.d(TAG, "setTurnSignalLeft: " + enabled);
+        startOrStopBlink(mLeftBlink, mTurnLeftInstances, enabled);
     }
 
     /**
-     * 每帧驱动转向灯闪烁（仅在开启时）。
+     * 开启/关闭右转向灯。
+     */
+    public void setTurnSignalRight(boolean enabled) {
+        if (mTurnRightInstances.isEmpty()) {
+            Log.w(TAG, "setTurnSignalRight: 无右转向灯材质实例");
+            return;
+        }
+        Log.d(TAG, "setTurnSignalRight: " + enabled);
+        startOrStopBlink(mRightBlink, mTurnRightInstances, enabled);
+    }
+
+    /**
+     * 是否有任一转向灯在闪烁（供省电调度保持满帧）。
+     */
+    public boolean isTurnSignalOn() {
+        return mLeftBlink.on || mRightBlink.on;
+    }
+
+    /**
+     * 每帧驱动左右转向灯分别闪烁。
      */
     public void update(long frameTimeNanos) {
-        if (!mTurnSignalOn || mTurnMaterialInstances.isEmpty()) {
-            return;
-        }
-        if (mTurnLastToggleNs < 0) {
-            mTurnLastToggleNs = frameTimeNanos;
-            mTurnPhaseOn = true;
-            applyTurn(true);
-            return;
-        }
-        if (frameTimeNanos - mTurnLastToggleNs >= TURN_BLINK_INTERVAL_NS) {
-            mTurnLastToggleNs = frameTimeNanos;
-            mTurnPhaseOn = !mTurnPhaseOn;
-            applyTurn(mTurnPhaseOn);
+        updateBlink(mLeftBlink, mTurnLeftInstances, frameTimeNanos);
+        updateBlink(mRightBlink, mTurnRightInstances, frameTimeNanos);
+    }
+
+    private void startOrStopBlink(BlinkState state, List<MaterialInstance> instances,
+                                  boolean enabled) {
+        state.on = enabled;
+        if (enabled) {
+            // 立即点亮，并重置闪烁计时
+            state.lastToggleNs = -1;
+            state.phase = true;
+            applyTurn(instances, true);
+        } else {
+            applyTurn(instances, false);
+            state.lastToggleNs = -1;
+            state.phase = false;
         }
     }
 
-    private void applyTurn(boolean on) {
+    private void updateBlink(BlinkState state, List<MaterialInstance> instances,
+                             long frameTimeNanos) {
+        if (!state.on || instances.isEmpty()) {
+            return;
+        }
+        if (state.lastToggleNs < 0) {
+            state.lastToggleNs = frameTimeNanos;
+            state.phase = true;
+            applyTurn(instances, true);
+            return;
+        }
+        if (frameTimeNanos - state.lastToggleNs >= TURN_BLINK_INTERVAL_NS) {
+            state.lastToggleNs = frameTimeNanos;
+            state.phase = !state.phase;
+            applyTurn(instances, state.phase);
+        }
+    }
+
+    private void applyTurn(List<MaterialInstance> instances, boolean on) {
         float strength = on ? TURN_EMISSIVE_STRENGTH : 0f;
-        for (MaterialInstance mi : mTurnMaterialInstances) {
+        for (MaterialInstance mi : instances) {
             mi.setParameter("emissiveStrength", strength);
         }
     }

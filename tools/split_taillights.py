@@ -6,9 +6,9 @@
 后灯组布局（用户确认）：
     |转向灯|倒车灯|-----尾灯(中央红条)-----|倒车灯|转向灯|
   - 中央红色尾灯：车身网格 Object_5 中 x≈-1.81、y≈0.52~0.66、z∈[-0.51,0.51]、贴图为红色的三角面；
-  - 琥珀色转向灯：Object_47（CARRERA_4096_lamps）中
-      后转向灯 = x<-1.0 且 |z|>0.75（外侧）；
-      前转向灯 = x>1.0（车头琥珀色灯带，整条）；
+  - 琥珀色转向灯（按左右拆成两个材质）：Object_47（CARRERA_4096_lamps）中
+      后转向灯 = x<-1.0 且 |z|>0.75（外侧）；前转向灯 = x>1.0（车头琥珀灯带）；
+      按 z 正负分左右（模型 -Z 为车左 / +Z 为车右）；
   - 倒车灯（内侧）：保持 CARRERA_4096_lamps，本脚本不动。
 
 不改动源模型，输出新模型：
@@ -33,7 +33,8 @@ DST = os.path.join(ROOT, "app/src/main/assets/models/cartoon_sports_car_tailligh
 BODY_MATERIAL = "CARRERA_4096"
 LAMPS_MATERIAL = "CARRERA_4096_lamps"
 TAIL_MATERIAL = "CARRERA_4096_TAILLIGHTS"
-TURN_MATERIAL = "CARRERA_4096_TURNSIGNALS"
+TURN_MATERIAL_L = "CARRERA_4096_TURNSIGNALS_L"   # 左转向灯（模型 -Z 侧）
+TURN_MATERIAL_R = "CARRERA_4096_TURNSIGNALS_R"   # 右转向灯（模型 +Z 侧）
 
 # 中央尾灯条带筛选（世界坐标 + 贴图红色度）
 TAIL_MAX_X = -1.2
@@ -289,9 +290,17 @@ def is_tail(cx, cy, cz, redness):
             and redness is not None and redness > TAIL_MIN_REDNESS)
 
 
-def is_turn(cx, cy, cz, redness):
-    rear = cx < TURN_MAX_X and abs(cz) > TURN_MIN_ABS_Z
-    front = cx > TURN_FRONT_MIN_X
+def is_turn_left(cx, cy, cz, redness):
+    """左转向灯：后部外侧(-Z) 或 前部(-Z) 的琥珀段（模型 -Z 为车左）。"""
+    rear = cx < TURN_MAX_X and cz < -TURN_MIN_ABS_Z
+    front = cx > TURN_FRONT_MIN_X and cz < 0.0
+    return rear or front
+
+
+def is_turn_right(cx, cy, cz, redness):
+    """右转向灯：后部外侧(+Z) 或 前部(+Z) 的琥珀段（模型 +Z 为车右）。"""
+    rear = cx < TURN_MAX_X and cz > TURN_MIN_ABS_Z
+    front = cx > TURN_FRONT_MIN_X and cz > 0.0
     return rear or front
 
 
@@ -301,18 +310,24 @@ def main():
 
     tail_mat = add_emissive_material(
         gltf, material_index(gltf, BODY_MATERIAL), TAIL_MATERIAL, TAIL_EMISSIVE_RGB)
-    turn_mat = add_emissive_material(
-        gltf, material_index(gltf, LAMPS_MATERIAL), TURN_MATERIAL, TURN_EMISSIVE_RGB)
+    turn_l_mat = add_emissive_material(
+        gltf, material_index(gltf, LAMPS_MATERIAL), TURN_MATERIAL_L, TURN_EMISSIVE_RGB)
+    turn_r_mat = add_emissive_material(
+        gltf, material_index(gltf, LAMPS_MATERIAL), TURN_MATERIAL_R, TURN_EMISSIVE_RGB)
 
     print("拆分中央尾灯：")
     tail_count = split_material(gltf, bin_chunk, world, get_base_color_image,
                                 BODY_MATERIAL, tail_mat, is_tail)
-    print("拆分外侧转向灯：")
-    turn_count = split_material(gltf, bin_chunk, world, get_base_color_image,
-                                LAMPS_MATERIAL, turn_mat, is_turn)
+    print("拆分左转向灯：")
+    turn_l = split_material(gltf, bin_chunk, world, get_base_color_image,
+                            LAMPS_MATERIAL, turn_l_mat, is_turn_left)
+    print("拆分右转向灯：")
+    turn_r = split_material(gltf, bin_chunk, world, get_base_color_image,
+                            LAMPS_MATERIAL, turn_r_mat, is_turn_right)
 
-    if tail_count == 0 or turn_count == 0:
-        sys.exit("拆分结果异常：尾灯 %d / 转向灯 %d" % (tail_count, turn_count))
+    if tail_count == 0 or turn_l == 0 or turn_r == 0:
+        sys.exit("拆分结果异常：尾灯 %d / 左 %d / 右 %d" % (tail_count, turn_l, turn_r))
+    turn_count = turn_l + turn_r
 
     while len(bin_chunk) % 4 != 0:
         bin_chunk.append(0)
@@ -320,7 +335,7 @@ def main():
     write_glb(DST, gltf, bin_chunk)
 
     print("已写出:", DST, "%.1f MB" % (os.path.getsize(DST) / 1e6))
-    print("合计：尾灯 %d 面、转向灯 %d 面" % (tail_count, turn_count))
+    print("合计：尾灯 %d 面、左转向 %d 面、右转向 %d 面" % (tail_count, turn_l, turn_r))
 
     # 自检
     check, _ = read_glb(DST)
@@ -331,7 +346,7 @@ def main():
             continue
         for prim in check["meshes"][node["mesh"]]["primitives"]:
             n = check["materials"][prim["material"]].get("name")
-            if n in (TAIL_MATERIAL, TURN_MATERIAL):
+            if n in (TAIL_MATERIAL, TURN_MATERIAL_L, TURN_MATERIAL_R):
                 print("自检: node %d %s %s 索引数=%d"
                       % (ni, node.get("name"), n,
                          check["accessors"][prim["indices"]]["count"]))

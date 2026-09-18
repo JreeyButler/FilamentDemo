@@ -14,6 +14,8 @@
     <string name="close_rear_light">Close Rear Light</string>
     <string name="open_turn_signal">Open Turn Signal</string>
     <string name="close_turn_signal">Close Turn Signal</string>
+    <string name="left_turn">Left Turn</string>
+    <string name="right_turn">Right Turn</string>
     <string name="brake">Brake (Hold)</string>
     <string name="light_dir_adjust">Light Dir</string>
     <string name="light_pos_adjust">Light Pos</string>

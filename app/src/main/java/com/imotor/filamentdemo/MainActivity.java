@@ -91,9 +91,13 @@ public class MainActivity extends AppCompatActivity {
         toggleRearLight.setOnCheckedChangeListener((b, isChecked) ->
                 mFilamentView.setRearLightEnabled(isChecked));
 
-        ToggleButton toggleTurnSignal = findViewById(R.id.toggle_turn_signal);
-        toggleTurnSignal.setOnCheckedChangeListener((b, isChecked) ->
-                mFilamentView.setTurnSignalEnabled(isChecked));
+        ToggleButton toggleLeftTurn = findViewById(R.id.toggle_left_turn);
+        toggleLeftTurn.setOnCheckedChangeListener((b, isChecked) ->
+                mFilamentView.setTurnSignalLeft(isChecked));
+
+        ToggleButton toggleRightTurn = findViewById(R.id.toggle_right_turn);
+        toggleRightTurn.setOnCheckedChangeListener((b, isChecked) ->
+                mFilamentView.setTurnSignalRight(isChecked));
 
         // ── 刹车：按住深红高亮，松开恢复 ───────────────────────────────────────
         Button btnBrake = findViewById(R.id.btn_brake);

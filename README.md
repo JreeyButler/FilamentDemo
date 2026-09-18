@@ -14,10 +14,10 @@
 - **开场灯光渐亮动画**：主光/轮廓光/环境光/Bloom 在 3 秒内按 `power3.out` 渐亮（见 `ShowroomFx`）。
 - **展厅布光与灯条**：暖白主光 + 冷蓝轮廓光；车顶两条自发光灯带（emissive quad + Bloom）营造 StartRoom 氛围。
 - **聚光车灯**：左右两颗 `FOCUSED_SPOT` 聚光灯（`CarLightSystem`），可实时微调光轴与灯位，测试标记默认关闭。
-- **尾灯 / 转向灯**：模型侧把中央尾灯条带、前后转向灯分别拆成独立材质
-  `CARRERA_4096_TAILLIGHTS`（红色）与 `CARRERA_4096_TURNSIGNALS`（琥珀色）；
+- **尾灯 / 转向灯**：模型侧把中央尾灯条带、左右转向灯分别拆成独立材质
+  `CARRERA_4096_TAILLIGHTS`（红）、`CARRERA_4096_TURNSIGNALS_L/_R`（琥珀）；
   运行时尾灯分浅红（示宽）/深红（刹车）两级 `emissiveStrength`（并叠加两颗红色点光做光溢出），
-  转向灯按 ~0.4s 周期闪烁（`CarLightSystem.setupRearLights` / `update`）。
+  左右转向灯可独立开启并按 ~0.4s 周期闪烁（`CarLightSystem.setupRearLights` / `update`）。
 - **地面**：lit 材质深色哑光地板（`lit.filamat` + GroundFactory），接受车灯光斑，反射交给 SSR；地面 Y 自动对齐模型轮底。
 - **行驶驱动**：按住"油门"加速至 200 km/h、松开缓慢滑行减速；按住"刹车"快速减速（优先于油门）；
   轮子实体按 `ω = v / r` 自转，指数平滑模拟加减速（`DriveSystem`）。
@@ -133,7 +133,7 @@ FilamentDemo/
 - **open/close left/right door**：开/关左/右前门。
 - **open/close front light**：开/关车头前照灯。
 - **open/close rear light**：开/关中央红色尾灯（示宽浅红；需相机转到车尾才看得到）。
-- **open/close turn signal**：开/关前后琥珀色转向灯，开启后自动闪烁。
+- **Left Turn / Right Turn**：分别开/关左、右转向灯，开启后对应一侧前后琥珀灯自动闪烁（可同时开，即双闪）。
 - **Brake (Hold)**：按住刹车，尾灯由浅红变深红高亮；松开恢复（若尾灯开启则回到浅红）。
 - **Light Dir / Light Pos**：车灯光轴与灯位调试面板（开发用）。
 - **Skin**：循环切换车衣（原漆 → 樱花 → 霓虹），只改外观车漆，内饰/玻璃保持原样。
@@ -234,11 +234,12 @@ python3 tools/split_taillights.py
 #   Object_5：车身 primitive（CARRERA_4096）
 #             + 中央尾灯 primitive（CARRERA_4096_TAILLIGHTS，93 索引，红 emissive、strength=0）
 #   Object_47：倒车灯保留 CARRERA_4096_lamps
-#             + 转向灯 primitive（CARRERA_4096_TURNSIGNALS，168 索引，琥珀 emissive、strength=0）
+#             + 左转向灯 primitive（CARRERA_4096_TURNSIGNALS_L，84 索引，琥珀 emissive、strength=0）
+#             + 右转向灯 primitive（CARRERA_4096_TURNSIGNALS_R，84 索引，琥珀 emissive、strength=0）
 ```
 
 - 尾灯：世界坐标 `x<-1.2`、`|z|<0.56`、`y∈0.45~0.75` + 贴图红色度筛出 31 个中央红条三角面；
-- 转向灯：后转向灯 `x<-1.0 且 |z|>0.75`（24 面）+ 前转向灯 `x>1.0`（车头琥珀灯带，32 面），共 56 面。
+- 转向灯：后外侧 `x<-1.0 且 |z|>0.75` + 车前 `x>1.0`，按 z 正负分左右（模型 -Z 为车左 / +Z 为车右），各 28 面。
 
 脚本仅追加索引 accessor/bufferView（不动顶点），克隆对应基础材质为独立发光材质并修正 glb 的
 buffer/chunk 对齐；源模型保持不变，App 加载新模型。运行时 `CarLightSystem` 找到对应材质实例，
