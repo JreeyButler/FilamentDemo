@@ -29,9 +29,10 @@ public class MainActivity extends AppCompatActivity {
     private TextView mTvLightDir;
     private TextView mTvLightPos;
     /**
-     * 车衣索引：0 = 原漆，1..n = CarSkinSystem.BUILTIN_SKIN_PATHS
+     * 车衣索引：0 = 原漆，1..n = assets/skins/ 下自动发现的贴图
      */
     private int mSkinIndex = 0;
+    private java.util.List<String> mSkinPaths = new java.util.ArrayList<>();
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -130,17 +131,22 @@ public class MainActivity extends AppCompatActivity {
             updatePosLabel();
         });
 
-        // ── 车衣切换：原漆 → 樱花 → 霓虹 → 原漆 ────────────────────────────
+        // ── 车衣切换：原漆 → 自动发现的 skins/* → 原漆 ──────────────────────
+        mSkinPaths = CarSkinSystem.discoverSkins(this);
+        Log.d(TAG, "initView: 发现车衣 " + mSkinPaths.size() + " 套: " + mSkinPaths);
         Button btnSkin = findViewById(R.id.btn_skin);
+        if (mSkinPaths.isEmpty()) {
+            btnSkin.setEnabled(false);
+        }
         btnSkin.setOnClickListener(v -> {
-            int skinCount = CarSkinSystem.BUILTIN_SKIN_PATHS.length;
-            mSkinIndex = (mSkinIndex + 1) % (skinCount + 1);
+            mSkinIndex = (mSkinIndex + 1) % (mSkinPaths.size() + 1);
             if (mSkinIndex == 0) {
                 mFilamentView.resetCarSkin();
                 btnSkin.setText(R.string.skin_switch);
             } else {
-                mFilamentView.applyCarSkin(CarSkinSystem.BUILTIN_SKIN_PATHS[mSkinIndex - 1]);
-                btnSkin.setText(CarSkinSystem.BUILTIN_SKIN_NAMES[mSkinIndex - 1]);
+                String path = mSkinPaths.get(mSkinIndex - 1);
+                mFilamentView.applyCarSkin(path);
+                btnSkin.setText(CarSkinSystem.skinDisplayName(path));
             }
         });
 

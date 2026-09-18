@@ -48,16 +48,38 @@ public final class CarSkinSystem {
     };
 
     /**
-     * 内置车衣资源路径（null 项表示原漆）
+     * 自动发现 assets/skins/ 下所有图片作为可选车衣（按文件名排序）。
+     * 用 tools/jpg_to_skin.py 生成的贴图直接放进去即可，无需改代码。
      */
-    public static final String[] BUILTIN_SKIN_PATHS = {
-            "skins/skin_sakura.jpg",
-            "skins/skin_cyber.jpg"
-    };
+    public static List<String> discoverSkins(Context context) {
+        List<String> skins = new ArrayList<>();
+        try {
+            String[] files = context.getAssets().list("skins");
+            if (files != null) {
+                java.util.Arrays.sort(files);
+                for (String file : files) {
+                    String lower = file.toLowerCase(Locale.ROOT);
+                    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+                            || lower.endsWith(".png") || lower.endsWith(".webp")) {
+                        skins.add("skins/" + file);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "discoverSkins: 读取 assets/skins 失败", e);
+        }
+        return skins;
+    }
+
     /**
-     * 内置车衣显示名
+     * 车衣显示名：去掉目录与扩展名的文件名。
      */
-    public static final String[] BUILTIN_SKIN_NAMES = {"樱花", "霓虹"};
+    public static String skinDisplayName(String assetPath) {
+        int slash = assetPath.lastIndexOf('/');
+        String name = slash >= 0 ? assetPath.substring(slash + 1) : assetPath;
+        int dot = name.lastIndexOf('.');
+        return dot > 0 ? name.substring(0, dot) : name;
+    }
 
     private final Engine mEngine;
     private final Context mContext;

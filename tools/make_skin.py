@@ -160,11 +160,14 @@ def draw_cyber(size):
     return out.convert("RGB")
 
 
-def compose(base, pattern, mask, out_path):
+def compose(base, pattern, mask, out_path, shading=1.0, out_size=None):
+    """把 pattern 按 mask 合成到 base 的车身区；shading 控制保留原 AO/明暗的强度(0~1)。"""
     scale = Image.merge("RGB", (shading_layer(base),) * 3)
     modulated = ImageChops.multiply(pattern, scale)
+    if shading < 1.0:
+        modulated = Image.blend(pattern, modulated, shading)
     result = Image.composite(modulated, base, mask)
-    result = result.resize((OUT_SIZE, OUT_SIZE), Image.LANCZOS)
+    result = result.resize((out_size or OUT_SIZE, out_size or OUT_SIZE), Image.LANCZOS)
     result.save(out_path, "JPEG", quality=90)
     print("written", out_path, result.size)
 

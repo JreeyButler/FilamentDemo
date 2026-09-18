@@ -20,8 +20,8 @@
   （低速 5 根 → 满速 60 根）（`SpeedLinesFX` + Bloom 辉光）。
 - **相机抖动**：行驶中相机眼点按速度叠加多频正弦噪声晃动，随速度渐显渐隐（`RenderPipeline`）。
 - **车门开合交互**：`DoorController` 接口，对左右前门 entity 进行铰链平移 + Y 轴 ±35° 旋转。
-- **车衣换装**：非破坏性替换外观车漆的 `baseColorMap`（复制材质实例），内置"樱花 / 霓虹"示例车衣可循环切换，
-  内饰/玻璃保持原样（`CarSkinSystem` + `assets/skins/`）。
+- **车衣换装**：非破坏性替换外观车漆的 `baseColorMap`（复制材质实例），自动发现 `assets/skins/` 下所有贴图可循环切换，
+  内饰/玻璃保持原样（`CarSkinSystem` + `assets/skins/`）。可用 `tools/project_skin.py` 把任意 JPG 经 3D 投影烘焙成车衣。
 - **相机轨道控制**：ORBIT/PAN/ZOOM 自定义手势（`CameraGestureListener`），带阻尼与防穿地限制。
 - **全屏沉浸**：Edge-to-Edge + 隐藏状态栏/导航栏（`NoActionBar`），下滑临时呼出。
 - **省电渲染调度**：忙碌（行驶/动画/手势/光束在场）满帧 → 静止 10fps 冷却 3 秒 → 深睡停止调度，
@@ -84,6 +84,8 @@ FilamentDemo/
 │   └── build.gradle
 ├── groundShadow.mat                          # 历史材质源（现地面已改用 lit.filamat）
 ├── tools/make_skin.py                        # 开发脚本：由 glb UV 图集生成示例车衣（不打包）
+├── tools/project_skin.py                     # 开发脚本：JPG 3D 投影烘焙成车衣（推荐，不打包）
+├── tools/jpg_to_skin.py                      # 开发脚本：JPG 直接贴 UV 图集（不打包）
 ├── gradle/libs.versions.toml                 # 依赖版本目录
 ├── build.gradle / settings.gradle
 └── LICENSE.md
@@ -166,6 +168,43 @@ syncModelLoading() → manipulator.getLookAt(+速度抖动) → camera.lookAt �
 matc -p mobile -a opengl -o app/src/main/assets/lit.filamat lit.mat
 matc -p mobile -a opengl -o app/src/main/assets/emissive.filamat emissive.mat
 ```
+
+### 6. 自定义车衣
+
+把任意 JPG/PNG 转成车衣。**推荐用 3D 投影烘焙**（图案在车身各面板间连贯），
+备有"直接贴图集"脚本（简单但会呈碎片拼贴）。依赖：`pillow numpy`。
+
+**推荐：3D 投影烘焙**（读取车模顶点/UV，把图片投影到车身曲面再烘回图集）
+
+```bash
+# 侧视投影（默认，适合痛车/侧绘）：图在车身两侧呈连贯画面
+python3 tools/project_skin.py my_art.jpg
+
+# 缩放/平移控制贴图位置（zoom>1 放大，center 为投影平面上的中心）
+python3 tools/project_skin.py anime.png --project side --zoom 0.5 --center 0.5 0.45
+
+# 前脸 / 顶视 / 柱面环绕
+python3 tools/project_skin.py art.jpg --project front
+python3 tools/project_skin.py art.jpg --project top
+python3 tools/project_skin.py art.jpg --project cylindrical
+
+# 投影范围外的车身填底色；--shading 控制保留原 AO/明暗
+python3 tools/project_skin.py art.jpg --base-color "#101018" --shading 0.8
+```
+
+**简单模式：直接贴 UV 图集**（无 3D 投影，图片会被各 UV 岛切碎，适合无缝图案/纯色）
+
+```bash
+python3 tools/jpg_to_skin.py my_art.jpg --mode cover
+python3 tools/jpg_to_skin.py logo.png --mode contain --base-color "#101018"
+python3 tools/jpg_to_skin.py tile.jpg --mode tile --tile-size 1024
+```
+
+两者都会输出到 `app/src/main/assets/skins/<名字>.jpg`；重启 App 后该车衣自动出现在 `Skin` 按钮的循环列表里（无需改代码）。
+
+> 原理：车模外观车漆共用一张 UV 图集，直接替换图集会让图片被 UV 岛切碎；
+> `project_skin.py` 通过模型真实的顶点+UV 做“投影 → UV 空间光栅化 → 采样”，因此图案连贯。
+> 若要极致对位的痛车，仍可在 Blender 中 "Project from View" 后烘焙再放入 `assets/skins/`。
 
 ## 资源来源
 
