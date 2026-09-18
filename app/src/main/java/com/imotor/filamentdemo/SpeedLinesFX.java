@@ -12,7 +12,8 @@ import java.util.Random;
 
 /**
  * 速度光束特效（彩色光条围绕车身平行滑动，复刻 su7 speedup 光束）。
- * 负责：光束生成、随车速 1:1 后退/回绕、强度渐变、可见数量随速度分级（低速 5 根 → 满速 60 根）。
+ * 负责：光束生成、随车速非线性后退/回绕（低速变化快、高速趋缓）、
+ * 强度渐变、可见数量随速度分级（低速 5 根 → 满速 60 根）。
  *
  * @author Yan.Liangliang
  * @date 2025/9/18
@@ -50,6 +51,28 @@ public final class SpeedLinesFX {
      * 可见光束数下限：低速时最少显示 5 根，满速显示全部 60 根
      */
     private static final int BEAM_MIN_COUNT = 5;
+
+    /**
+     * 光束视觉移动速度的非线性映射：低速时随车速变化大，高速趋近饱和。
+     * 上限取车辆最高速度，保证满速时光束与轮速 1:1。
+     */
+    private static final float BEAM_SPEED_MAX = DriveSystem.MAX_SPEED;
+    /**
+     * 饱和曲线的"软拐点"（m/s）：越小越早饱和。15 m/s ≈ 54 km/h，
+     * 使 ~100 km/h 时已达上限的 8 成以上，之后继续提速光束变化很小。
+     */
+    private static final float BEAM_SPEED_KNEE = 15f;
+
+    /**
+     * 车速 → 光束视觉移动速度（m/s）：指数饱和曲线，
+     * 低速段斜率大（提速时光束明显加速），高速段斜率小（变化趋缓）。
+     */
+    private static float beamVisualSpeed(float speed) {
+        if (speed <= 0f) {
+            return 0f;
+        }
+        return BEAM_SPEED_MAX * (1f - (float) Math.exp(-speed / BEAM_SPEED_KNEE));
+    }
 
     private final int[] mBeamEntities = new int[SPEED_BEAM_COUNT * 2];
     /**
@@ -152,7 +175,7 @@ public final class SpeedLinesFX {
     }
 
     /**
-     * 每帧驱动光束：随车速 1:1 向 -X 后退、出界回绕；显示强度随速度渐显渐隐；
+     * 每帧驱动光束：随车速非线性向 -X 后退、出界回绕；显示强度随速度渐显渐隐；
      * 可见根数随速度分级（rank 管理，逐根增删场景）。
      *
      * @return 当前在场景中的光束根数（供省电调度判定忙碌）
@@ -178,7 +201,7 @@ public final class SpeedLinesFX {
         if (target == 0f && mBeamFade < 0.02f) {
             mBeamFade = 0f;
         }
-        float move = currentSpeed * dt; // 1:1 与滚动轮速同步
+        float move = beamVisualSpeed(currentSpeed) * dt; // 非线性：低速变化快、高速趋缓
 
         // 可见根数随速度：低速 5 根 → 高速满编 60 根（count = 5 + 55×speedRatio）；
         // 完全停下（fade 归零）后全部移出场景，避免黑色不透明条遮挡背景
