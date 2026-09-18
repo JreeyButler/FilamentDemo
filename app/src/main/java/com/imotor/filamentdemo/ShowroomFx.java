@@ -30,6 +30,11 @@ public final class ShowroomFx {
     private static final float INTRO_IBL = 30_000f;
     private static final float INTRO_BLOOM_STRENGTH = 0.28f;
 
+    /**
+     * 行驶氛围：满速时环境光压暗到的比例（光束为 unlit，不受影响，因而更突出）。
+     */
+    private static final float DRIVE_IBL_MIN_SCALE = 0.15f;
+
     private boolean mIntroPlaying = true;
     private long mIntroStartTimeNs = -1;
     private IndirectLight mIndirectLight;
@@ -53,6 +58,14 @@ public final class ShowroomFx {
      * 灯条 entity 列表（两条顶灯带；尾部柔光板已移除，避免遮挡车尾视野）
      */
     private final int[] mLightBarEntities = new int[2];
+    /**
+     * 灯条材质实例，便于行驶时按速度调低发光强度
+     */
+    private final MaterialInstance[] mLightBarInstances = new MaterialInstance[2];
+    /**
+     * 灯条基础发光强度（行驶氛围在它基础上按比例缩放）
+     */
+    private static final float LIGHT_BAR_BASE_INTENSITY = 18f;
 
     public ShowroomFx(Engine engine, Scene scene, View view,
                       EmissiveQuadFactory quadFactory, float groundY) {
@@ -108,7 +121,8 @@ public final class ShowroomFx {
         MaterialInstance bar1 = mQuadFactory.getMaterial().createInstance();
         bar1.setDoubleSided(true);
         bar1.setParameter("glowColor", 1.0f, 0.96f, 0.92f);
-        bar1.setParameter("intensity", 18f);
+        bar1.setParameter("intensity", LIGHT_BAR_BASE_INTENSITY);
+        mLightBarInstances[0] = bar1;
         mLightBarEntities[0] = mQuadFactory.createQuad(mEngine, mScene, bar1,
                 0f, barY, 2.6f, 14f, 0.35f, EmissiveQuadFactory.ORIENT_DOWN);
 
@@ -116,7 +130,8 @@ public final class ShowroomFx {
         MaterialInstance bar2 = mQuadFactory.getMaterial().createInstance();
         bar2.setDoubleSided(true);
         bar2.setParameter("glowColor", 1.0f, 0.96f, 0.92f);
-        bar2.setParameter("intensity", 18f);
+        bar2.setParameter("intensity", LIGHT_BAR_BASE_INTENSITY);
+        mLightBarInstances[1] = bar2;
         mLightBarEntities[1] = mQuadFactory.createQuad(mEngine, mScene, bar2,
                 0f, barY, -2.6f, 14f, 0.35f, EmissiveQuadFactory.ORIENT_DOWN);
     }
@@ -153,6 +168,36 @@ public final class ShowroomFx {
 
     public boolean isIntroPlaying() {
         return mIntroPlaying;
+    }
+
+    /**
+     * 行驶氛围：速度越高环境光越暗，制造"越跑越暗、光束越亮眼"的氛围。
+     * 光束/灯条为 unlit 自发光，不随环境光变化，因此不被压暗。
+     * 开场渐亮动画期间由 updateIntro 接管，此方法不生效。
+     *
+     * @param speedRatio 当前速度占最高速的比例 [0,1]
+     */
+    public void updateDriveMood(float speedRatio) {
+        if (mIntroPlaying) {
+            return;
+        }
+        float r = Math.max(0f, Math.min(1f, speedRatio));
+        float scale = 1f - (1f - DRIVE_IBL_MIN_SCALE) * r;
+
+        // 环境光
+        if (mIndirectLight != null) {
+            mIndirectLight.setIntensity(INTRO_IBL * scale);
+        }
+        // 主光随速度压暗
+        if (mLights != null && mShowroomLightEntities[0] != -1) {
+            mLights.setIntensity(mLights.getInstance(mShowroomLightEntities[0]), INTRO_KEY_LIGHT * scale);
+        }
+        // 顶灯条发光强度随速度调低
+        for (MaterialInstance bar : mLightBarInstances) {
+            if (bar != null) {
+                bar.setParameter("intensity", LIGHT_BAR_BASE_INTENSITY * scale);
+            }
+        }
     }
 
     public void setIndirectLight(IndirectLight light) {
