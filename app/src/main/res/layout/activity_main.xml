@@ -40,6 +40,14 @@
             android:textOff="@string/open_front_light"
             android:textOn="@string/close_front_light" />
 
+        <ToggleButton
+            android:id="@+id/toggle_rear_light"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="false"
+            android:textOff="@string/open_rear_light"
+            android:textOn="@string/close_rear_light" />
+
         <Button
             android:id="@+id/btn_toggle_light_dir_panel"
             android:layout_width="wrap_content"

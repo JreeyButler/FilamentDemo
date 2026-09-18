@@ -10,6 +10,8 @@
     <!-- Light controls -->
     <string name="open_front_light">Open Front Light</string>
     <string name="close_front_light">Close Front Light</string>
+    <string name="open_rear_light">Open Rear Light</string>
+    <string name="close_rear_light">Close Rear Light</string>
     <string name="light_dir_adjust">Light Dir</string>
     <string name="light_pos_adjust">Light Pos</string>
     <string name="reset">Reset</string>

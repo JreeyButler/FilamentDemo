@@ -13,6 +13,7 @@
 - **开场灯光渐亮动画**：主光/轮廓光/环境光/Bloom 在 3 秒内按 `power3.out` 渐亮（见 `ShowroomFx`）。
 - **展厅布光与灯条**：暖白主光 + 冷蓝轮廓光；车顶两条自发光灯带（emissive quad + Bloom）营造 StartRoom 氛围。
 - **聚光车灯**：左右两颗 `FOCUSED_SPOT` 聚光灯（`CarLightSystem`），可实时微调光轴与灯位，测试标记默认关闭。
+- **尾灯**：车尾红色自发光灯带（emissive quad + Bloom），独立开关，与车头灯分离（`CarLightSystem.setupRearLights`）。
 - **地面**：lit 材质深色哑光地板（`lit.filamat` + GroundFactory），接受车灯光斑，反射交给 SSR；地面 Y 自动对齐模型轮底。
 - **行驶驱动**：速度条设定目标速度（0~200 km/h），轮子实体按 `ω = v / r` 自转，指数平滑模拟加减速（`DriveSystem`）。
 - **速度光束**：60 根随机彩色发光条围绕车身平行滑动，随车速**非线性**后退/回绕（低速变化快、高速趋缓）；
@@ -123,6 +124,7 @@ FilamentDemo/
 - **拖拽 / 双指缩放 / 双指平移**：相机轨道控制，防穿地。
 - **open/close left/right door**：开/关左/右前门。
 - **open/close front light**：开/关车头前照灯。
+- **open/close rear light**：开/关车尾红色灯带（需相机转到车尾才看得到）。
 - **Light Dir / Light Pos**：车灯光轴与灯位调试面板（开发用）。
 - **Skin**：循环切换车衣（原漆 → 樱花 → 霓虹），只改外观车漆，内饰/玻璃保持原样。
 - **Start / Stop + 速度条**：启动行驶（原地展厅式，轮子自转 + 速度光束 + 相机抖动），

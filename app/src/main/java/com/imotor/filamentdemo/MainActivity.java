@@ -87,6 +87,10 @@ public class MainActivity extends AppCompatActivity {
         toggleFrontLight.setOnCheckedChangeListener((b, isChecked) ->
                 mFilamentView.setFrontLightEnabled(isChecked));
 
+        ToggleButton toggleRearLight = findViewById(R.id.toggle_rear_light);
+        toggleRearLight.setOnCheckedChangeListener((b, isChecked) ->
+                mFilamentView.setRearLightEnabled(isChecked));
+
         // ── 光源方向调节面板 ───────────────────────────────────────────────────
         mTvLightDir = findViewById(R.id.tv_light_dir);
         View lightDirPanel = findViewById(R.id.light_dir_panel);

@@ -5,11 +5,13 @@ import android.util.Log;
 import com.google.android.filament.Engine;
 import com.google.android.filament.EntityManager;
 import com.google.android.filament.LightManager;
+import com.google.android.filament.MaterialInstance;
 import com.google.android.filament.Scene;
 
 /**
- * 车头灯系统：左右两颗 FOCUSED_SPOT 前照灯。
- * 负责：灯位创建、开关、光轴与位置实时微调。
+ * 车灯系统：
+ * - 车头：左右两颗 FOCUSED_SPOT 前照灯，支持开关与光轴/位置实时微调；
+ * - 车尾：红色自发光灯带（emissive quad + Bloom），支持开关。
  *
  * @author Yan.Liangliang
  * @date 2025/9/18
@@ -32,11 +34,35 @@ public final class CarLightSystem {
     // 左右灯各向外偏约 2.6°，让两束光在远处分开成两个独立光斑，而不是中间糊成一团
     private static final float BEAM_TOE_Z = 0.045f;
 
+    // ── 车尾灯几何（lamp 透镜条在 x≈-1.8~-1.5、y≈0.6、z≈±0.88）──────────────
+    private static final float REAR_LIGHT_X = -1.83f;   // 尾灯面稍靠车外，避免埋进车身
+    private static final float REAR_LIGHT_Y = 0.60f;
+    private static final float REAR_LIGHT_WIDTH = 1.50f;  // 沿 Z 的灯带宽度
+    private static final float REAR_LIGHT_HEIGHT = 0.16f; // 沿 Y 的灯带高度
+    private static final float REAR_LIGHT_INTENSITY = 16f;
+    // 两颗红色点光：给尾灯加"光溢出"，让灯带与车身/地面融为一体，减少贴纸感
+    private static final float REAR_GLOW_X = -1.95f;
+    private static final float REAR_GLOW_Y = 0.60f;
+    private static final float REAR_GLOW_Z = 0.55f;
+    private static final float REAR_GLOW_INTENSITY = 26_000f;  // 流明
+    private static final float REAR_GLOW_FALLOFF = 2.2f;       // 衰减半径（米）
+
     /**
      * 前照灯 entity（左右两颗），默认不加入场景（关灯状态）
      */
     private final int[] mFrontLightEntities = {-1, -1};
     private boolean mFrontLightOn = false;
+
+    /**
+     * 尾灯自发光灯带 entity，默认不加入场景（关灯状态）
+     */
+    private final java.util.List<Integer> mRearLightEntities = new java.util.ArrayList<>();
+    /**
+     * 尾灯红色点光 entity（左右各一颗），默认不加入场景
+     */
+    private final int[] mRearGlowLightEntities = {-1, -1};
+    private boolean mRearLightOn = false;
+    private final EmissiveQuadFactory mQuadFactory;
 
     /**
      * 当前光轴方向（两颗灯共用，可实时微调）
@@ -54,9 +80,11 @@ public final class CarLightSystem {
     private final Scene mScene;
     private final float mGroundY;
 
-    public CarLightSystem(Engine engine, Scene scene, float groundY) {
+    public CarLightSystem(Engine engine, Scene scene,
+                          EmissiveQuadFactory quadFactory, float groundY) {
         mEngine = engine;
         mScene = scene;
+        mQuadFactory = quadFactory;
         mGroundY = groundY;
     }
 
@@ -86,6 +114,78 @@ public final class CarLightSystem {
         applyLightPosition();
         applyLightDirection();
         Log.d(TAG, "setup: 已创建左右两颗 FOCUSED_SPOT 前照灯");
+    }
+
+    /**
+     * 创建车尾红色自发光灯带（默认关灯，entity 先从场景移除）。
+     * 车模自带的尾灯透镜（material CARRERA_4096_lamps）几乎不自发光，
+     * 这里用 emissive quad 叠一条可控的尾灯带，经 Bloom 呈现红色辉光。
+     */
+    public void setupRearLights() {
+        if (mQuadFactory == null || !mQuadFactory.isReady()) {
+            Log.w(TAG, "setupRearLights: emissive 材质不可用，尾灯跳过");
+            return;
+        }
+        MaterialInstance bar = mQuadFactory.getMaterial().createInstance();
+        bar.setDoubleSided(true);
+        bar.setParameter("glowColor", 1.0f, 0.06f, 0.04f);
+        bar.setParameter("intensity", REAR_LIGHT_INTENSITY);
+        int entity = mQuadFactory.createQuad(mEngine, mScene, bar,
+                REAR_LIGHT_X, REAR_LIGHT_Y, 0f,
+                REAR_LIGHT_WIDTH, REAR_LIGHT_HEIGHT,
+                EmissiveQuadFactory.ORIENT_FACING_X);
+        mRearLightEntities.add(entity);
+        // 关灯：先从场景移除，开灯时再加回
+        mScene.removeEntity(entity);
+
+        // 两颗红色点光，制造灯带向车身/地面的光溢出
+        float[] baseZ = {REAR_GLOW_Z, -REAR_GLOW_Z};
+        for (int i = 0; i < mRearGlowLightEntities.length; i++) {
+            int glow = EntityManager.get().create();
+            mRearGlowLightEntities[i] = glow;
+            new LightManager.Builder(LightManager.Type.POINT)
+                    .color(1.0f, 0.08f, 0.05f)
+                    .intensity(REAR_GLOW_INTENSITY)
+                    .falloff(REAR_GLOW_FALLOFF)
+                    .position(REAR_GLOW_X, REAR_GLOW_Y, baseZ[i])
+                    .castShadows(false)
+                    .build(mEngine, glow);
+            mScene.removeEntity(glow);
+        }
+        Log.d(TAG, "setupRearLights: 已创建尾灯灯带 + 红色点光");
+    }
+
+    /**
+     * 开启或关闭车尾灯
+     */
+    public void setRearLightEnabled(boolean enabled) {
+        if (mRearLightEntities.isEmpty()) return;
+        Log.d(TAG, "setRearLightEnabled: " + enabled);
+        if (enabled && !mRearLightOn) {
+            for (int e : mRearLightEntities) {
+                mScene.addEntity(e);
+            }
+            for (int e : mRearGlowLightEntities) {
+                if (e != -1) {
+                    mScene.addEntity(e);
+                }
+            }
+            mRearLightOn = true;
+        } else if (!enabled && mRearLightOn) {
+            for (int e : mRearLightEntities) {
+                mScene.removeEntity(e);
+            }
+            for (int e : mRearGlowLightEntities) {
+                if (e != -1) {
+                    mScene.removeEntity(e);
+                }
+            }
+            mRearLightOn = false;
+        }
+    }
+
+    public boolean isRearLightOn() {
+        return mRearLightOn;
     }
 
     /**

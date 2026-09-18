@@ -169,8 +169,9 @@ public class FilamentView2 extends SurfaceView {
         // 发光四边形工厂（灯条/速度光束共用）
         mQuadFactory = EmissiveQuadFactory.create(getContext(), mEngine);
         // 车灯在模型包围盒计算完成后（addGround 内已读取包围盒）再创建
-        mCarLights = new CarLightSystem(mEngine, mModelViewer.getScene(), mGroundY);
+        mCarLights = new CarLightSystem(mEngine, mModelViewer.getScene(), mQuadFactory, mGroundY);
         mCarLights.setup();
+        mCarLights.setupRearLights();
 
         // ── 展厅氛围：主光/轮廓光 + 自发光灯条 ──
         mShowroomFx = new ShowroomFx(mEngine, mModelViewer.getScene(), view, mQuadFactory, mGroundY);
@@ -440,6 +441,18 @@ public class FilamentView2 extends SurfaceView {
 
     public boolean isFrontLightOn() {
         return mCarLights.isFrontLightOn();
+    }
+
+    /**
+     * 开启或关闭车尾灯
+     */
+    public void setRearLightEnabled(boolean enabled) {
+        mCarLights.setRearLightEnabled(enabled);
+        wakeUp();
+    }
+
+    public boolean isRearLightOn() {
+        return mCarLights.isRearLightOn();
     }
 
     public float[] getLightDirection() {
