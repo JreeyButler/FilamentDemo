@@ -414,23 +414,30 @@ public class FilamentView2 extends SurfaceView {
 
     // ── 公共 API（转发到子模块 + 唤醒省电调度）────────────────────────────
 
-    public void setTargetSpeed(float speed) {
-        mDrive.setTargetSpeed(speed);
+    /**
+     * 油门（按住加速，松开缓慢滑行减速）
+     */
+    public void setThrottleEnabled(boolean enabled) {
+        mDrive.setThrottle(enabled);
         wakeUp();
     }
 
-    /**
-     * 以指定速度开始行驶（等效 setTargetSpeed，语义化入口）
-     */
-    public void startDriving(float speed) {
-        setTargetSpeed(speed);
+    public boolean isThrottleOn() {
+        return mDrive.isThrottleOn();
     }
 
     /**
-     * 停止行驶（目标速度归零，轮子渐停）
+     * 速度变化监听（每帧回调，单位 km/h）
      */
-    public void stopDriving() {
-        setTargetSpeed(0f);
+    public interface SpeedListener {
+        void onSpeedChanged(int kmh);
+    }
+
+    private SpeedListener mSpeedListener;
+    private int mLastReportedKmh = -1;
+
+    public void setSpeedListener(SpeedListener listener) {
+        mSpeedListener = listener;
     }
 
     /**
@@ -455,6 +462,19 @@ public class FilamentView2 extends SurfaceView {
 
     public boolean isRearLightOn() {
         return mCarLights.isRearLightOn();
+    }
+
+    /**
+     * 刹车（按住）：尾灯深红高亮 + 快速减速（优先于油门），松开恢复
+     */
+    public void setBrakeEnabled(boolean enabled) {
+        mCarLights.setBrakeEnabled(enabled);
+        mDrive.setBrake(enabled);
+        wakeUp();
+    }
+
+    public boolean isBrakeOn() {
+        return mCarLights.isBrakeOn();
     }
 
     /**
@@ -723,6 +743,7 @@ public class FilamentView2 extends SurfaceView {
 
             // 行驶驱动（轮子自转）
             mDrive.update(frameTimeNanos);
+            notifySpeed();
 
             // 行驶氛围：随速度非线性压暗环境光/主光/灯条，突出自发光光束
             mShowroomFx.updateDriveMood(mDrive.getCurrentSpeed());
@@ -796,6 +817,20 @@ public class FilamentView2 extends SurfaceView {
         mInteractHoldUntilMs = SystemClock.uptimeMillis() + INTERACT_HOLD_MS;
         choreographer.removeFrameCallback(mFrameScheduler);
         choreographer.postFrameCallback(mFrameScheduler);
+    }
+
+    /**
+     * 速度显示回调：km/h 整数变化时才通知 UI。
+     */
+    private void notifySpeed() {
+        if (mSpeedListener == null) {
+            return;
+        }
+        int kmh = Math.round(mDrive.getCurrentSpeed() * 3.6f);
+        if (kmh != mLastReportedKmh) {
+            mLastReportedKmh = kmh;
+            mSpeedListener.onSpeedChanged(kmh);
+        }
     }
 
     /**

@@ -16,10 +16,11 @@
 - **聚光车灯**：左右两颗 `FOCUSED_SPOT` 聚光灯（`CarLightSystem`），可实时微调光轴与灯位，测试标记默认关闭。
 - **尾灯 / 转向灯**：模型侧把中央尾灯条带、前后转向灯分别拆成独立材质
   `CARRERA_4096_TAILLIGHTS`（红色）与 `CARRERA_4096_TURNSIGNALS`（琥珀色）；
-  运行时尾灯切换 `emissiveStrength` 开关（并叠加两颗红色点光做光溢出），转向灯按 ~0.4s 周期闪烁
-  （`CarLightSystem.setupRearLights` / `update`）。
+  运行时尾灯分浅红（示宽）/深红（刹车）两级 `emissiveStrength`（并叠加两颗红色点光做光溢出），
+  转向灯按 ~0.4s 周期闪烁（`CarLightSystem.setupRearLights` / `update`）。
 - **地面**：lit 材质深色哑光地板（`lit.filamat` + GroundFactory），接受车灯光斑，反射交给 SSR；地面 Y 自动对齐模型轮底。
-- **行驶驱动**：速度条设定目标速度（0~200 km/h），轮子实体按 `ω = v / r` 自转，指数平滑模拟加减速（`DriveSystem`）。
+- **行驶驱动**：按住"油门"加速至 200 km/h、松开缓慢滑行减速；按住"刹车"快速减速（优先于油门）；
+  轮子实体按 `ω = v / r` 自转，指数平滑模拟加减速（`DriveSystem`）。
 - **速度光束**：60 根随机彩色发光条围绕车身平行滑动，随车速**非线性**后退/回绕（低速变化快、高速趋缓）；
   可见根数随速度分级
   （低速 5 根 → 满速 60 根）（`SpeedLinesFX` + Bloom 辉光）。
@@ -40,7 +41,7 @@
 | --- | --- |
 | [FilamentView2](app/src/main/java/com/imotor/filamentdemo/FilamentView2.java) | 装配、FrameCallback 帧调度、省电三段式、公共 API 转发、门控制 |
 | [ShowroomFx](app/src/main/java/com/imotor/filamentdemo/ShowroomFx.java) | 开场"灯光渐亮"动画、主光/轮廓光、发光灯条 |
-| [DriveSystem](app/src/main/java/com/imotor/filamentdemo/DriveSystem.java) | 速度状态（指数平滑）、轮子收集与自转、`MAX_SPEED`（200 km/h） |
+| [DriveSystem](app/src/main/java/com/imotor/filamentdemo/DriveSystem.java) | 油门/刹车 → 速度（加速/滑行/刹车三档平滑，刹车优先）、轮子收集与自转、`MAX_SPEED`（200 km/h） |
 | [SpeedLinesFX](app/src/main/java/com/imotor/filamentdemo/SpeedLinesFX.java) | 光束隧道全套：生成、随速后移/回绕、数量分级（rank 管理） |
 | [CarLightSystem](app/src/main/java/com/imotor/filamentdemo/CarLightSystem.java) | 左右聚光前照灯（开关、光轴/位置实时调整）+ 尾灯开关 + 转向灯闪烁 |
 | [RenderPipeline](app/src/main/java/com/imotor/filamentdemo/RenderPipeline.java) | 自管渲染：反射读取 ModelViewer 的 `swapChain`/`resourceLoader`，相机姿态 + 速度抖动 |
@@ -131,12 +132,13 @@ FilamentDemo/
 - **拖拽 / 双指缩放 / 双指平移**：相机轨道控制，防穿地。
 - **open/close left/right door**：开/关左/右前门。
 - **open/close front light**：开/关车头前照灯。
-- **open/close rear light**：开/关中央红色尾灯（需相机转到车尾才看得到）。
+- **open/close rear light**：开/关中央红色尾灯（示宽浅红；需相机转到车尾才看得到）。
 - **open/close turn signal**：开/关前后琥珀色转向灯，开启后自动闪烁。
+- **Brake (Hold)**：按住刹车，尾灯由浅红变深红高亮；松开恢复（若尾灯开启则回到浅红）。
 - **Light Dir / Light Pos**：车灯光轴与灯位调试面板（开发用）。
 - **Skin**：循环切换车衣（原漆 → 樱花 → 霓虹），只改外观车漆，内饰/玻璃保持原样。
-- **Start / Stop + 速度条**：启动行驶（原地展厅式，轮子自转 + 速度光束 + 相机抖动），
-  速度条 0~200 km/h，行驶中可实时拖动调速。
+- **Throttle (Hold) / Brake (Hold)**：底部一排两个按键。按住油门加速（松手缓慢滑行减速），
+  按住刹车快速减速并点亮刹车灯；两者同按优先刹车。实时车速显示在屏幕顶部居中。
 
 ## 关键实现说明
 
@@ -156,7 +158,8 @@ syncModelLoading() → manipulator.getLookAt(+速度抖动) → camera.lookAt �
 
 - 收集轮子：按节点名包含 `brakes` 匹配 4 个轮子节点（各含 rim + tyre 子树）。
 - 转向绕节点局部 X 轴（轮轴），`ω = v / WHEEL_RADIUS(0.33m)`，转向符号 `SPIN_SIGN = -1`（真机校准）。
-- 加减速为指数平滑（`SPEED_SMOOTH_K`），复刻 su7-replica 的 `power2.out` 手感。
+- 加减速为指数平滑，分三档系数：油门 `ACCEL_K`、滑行 `COAST_K`、刹车 `BRAKE_K`（刹车最大、滑行最小）；
+  优先级 刹车 > 油门 > 滑行。
 
 ### 3. 速度光束
 

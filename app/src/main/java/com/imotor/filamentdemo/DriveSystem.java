@@ -8,7 +8,8 @@ import com.google.android.filament.TransformManager;
 
 /**
  * 行驶系统（原地展厅式：车身不动，轮子按速度自转）。
- * 负责：速度状态（目标/当前，指数平滑）、轮子实体收集与逐帧自转。
+ * 负责：油门/刹车状态 → 速度（指数平滑：油门加速、松油门缓降、刹车快降，刹车优先）、
+ * 轮子实体收集与逐帧自转。
  *
  * @author Yan.Liangliang
  * @date 2025/9/18
@@ -29,9 +30,17 @@ public final class DriveSystem {
      */
     private static final float SPIN_SIGN = -1f;
     /**
-     * 速度平滑系数（每秒），越大加减速越快。复刻 su7-replica power2.out 的渐变手感。
+     * 油门加速平滑系数（每秒），越大提速越快。
      */
-    private static final float SPEED_SMOOTH_K = 2.0f;
+    private static final float ACCEL_K = 0.25f;
+    /**
+     * 刹车减速平滑系数（每秒），明显大于松油门，刹车更"急"。
+     */
+    private static final float BRAKE_K = 2.5f;
+    /**
+     * 松开油门后的滑行减速平滑系数（每秒），较小 → 减速慢。
+     */
+    private static final float COAST_K = 0.15f;
     /**
      * 单帧 dt 上限（秒），防止切后台回来后角度跳变。
      */
@@ -47,9 +56,13 @@ public final class DriveSystem {
     private final float[][] mWheelBaseTransforms = new float[4][16];
     private int mWheelCount = 0;
     /**
-     * 目标速度（m/s），由 UI 设定
+     * 油门是否按住（true=加速到最高速）
      */
-    private volatile float mTargetSpeed = 0f;
+    private volatile boolean mThrottleHeld = false;
+    /**
+     * 刹车是否按住（true=快速减速到 0），优先级高于油门
+     */
+    private volatile boolean mBrakeHeld = false;
     /**
      * 当前速度（m/s），每帧向目标速度指数平滑
      */
@@ -101,22 +114,33 @@ public final class DriveSystem {
     }
 
     /**
-     * 设定目标速度（m/s），自动钳制到 [0, MAX_SPEED]
+     * 油门：按住加速。松开会缓慢滑行减速。
      */
-    public void setTargetSpeed(float speed) {
-        mTargetSpeed = Math.max(0f, Math.min(MAX_SPEED, speed));
+    public void setThrottle(boolean held) {
+        mThrottleHeld = held;
+    }
+
+    /**
+     * 刹车：按住快速减速（优先于油门）。
+     */
+    public void setBrake(boolean held) {
+        mBrakeHeld = held;
+    }
+
+    public boolean isThrottleOn() {
+        return mThrottleHeld;
+    }
+
+    public boolean isBrakeOn() {
+        return mBrakeHeld;
     }
 
     public boolean isDrivingRequested() {
-        return mTargetSpeed > 0f;
+        return mThrottleHeld || mBrakeHeld;
     }
 
     public float getCurrentSpeed() {
         return mCurrentSpeed;
-    }
-
-    public float getTargetSpeed() {
-        return mTargetSpeed;
     }
 
     /**
@@ -137,10 +161,22 @@ public final class DriveSystem {
         }
         dt = Math.min(dt, MAX_FRAME_DT);
 
-        // 指数平滑：加减速渐变
-        float blend = 1f - (float) Math.exp(-SPEED_SMOOTH_K * dt);
-        mCurrentSpeed += (mTargetSpeed - mCurrentSpeed) * blend;
-        if (mTargetSpeed == 0f && mCurrentSpeed < 0.005f) {
+        // 优先级：刹车 > 油门 > 滑行
+        float target;
+        float k;
+        if (mBrakeHeld) {
+            target = 0f;
+            k = BRAKE_K;          // 刹车：减速快
+        } else if (mThrottleHeld) {
+            target = MAX_SPEED;
+            k = ACCEL_K;          // 油门：加速
+        } else {
+            target = 0f;
+            k = COAST_K;          // 松开油门：减速慢
+        }
+        float blend = 1f - (float) Math.exp(-k * dt);
+        mCurrentSpeed += (target - mCurrentSpeed) * blend;
+        if (target == 0f && mCurrentSpeed < 0.005f) {
             mCurrentSpeed = 0f;
         }
         // 已完全停止且轮子已停在当前角度：跳过无效更新

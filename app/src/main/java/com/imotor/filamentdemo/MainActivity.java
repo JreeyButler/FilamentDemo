@@ -2,10 +2,10 @@ package com.imotor.filamentdemo;
 
 import android.os.Bundle;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.Window;
 import android.widget.Button;
-import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.ToggleButton;
 
@@ -95,6 +95,23 @@ public class MainActivity extends AppCompatActivity {
         toggleTurnSignal.setOnCheckedChangeListener((b, isChecked) ->
                 mFilamentView.setTurnSignalEnabled(isChecked));
 
+        // ── 刹车：按住深红高亮，松开恢复 ───────────────────────────────────────
+        Button btnBrake = findViewById(R.id.btn_brake);
+        btnBrake.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    mFilamentView.setBrakeEnabled(true);
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    mFilamentView.setBrakeEnabled(false);
+                    break;
+                default:
+                    break;
+            }
+            return false;
+        });
+
         // ── 光源方向调节面板 ───────────────────────────────────────────────────
         mTvLightDir = findViewById(R.id.tv_light_dir);
         View lightDirPanel = findViewById(R.id.light_dir_panel);
@@ -158,39 +175,25 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // ── 行驶速度控制（原地展厅式：轮子自转）──────────────────────────────
-        ToggleButton toggleDrive = findViewById(R.id.toggle_drive);
-        SeekBar seekBarSpeed = findViewById(R.id.seekbar_speed);
+        // ── 行驶控制：油门 / 刹车（均为按住式）──────────────────────────────
         TextView tvSpeed = findViewById(R.id.tv_speed);
+        mFilamentView.setSpeedListener(kmh ->
+                tvSpeed.setText(String.format(Locale.US, "%d km/h", kmh)));
 
-        seekBarSpeed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override
-            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                // progress 即 km/h（0~200），内部换算为 m/s
-                float speedMps = progress / 3.6f;
-                tvSpeed.setText(String.format(Locale.US, "%d km/h", progress));
-                // 行驶中拖动速度条实时调速；停驶时只记录，等 Start 生效
-                if (toggleDrive.isChecked()) {
-                    mFilamentView.startDriving(speedMps);
-                }
+        Button btnThrottle = findViewById(R.id.btn_throttle);
+        btnThrottle.setOnTouchListener((v, event) -> {
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    mFilamentView.setThrottleEnabled(true);
+                    break;
+                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_CANCEL:
+                    mFilamentView.setThrottleEnabled(false);
+                    break;
+                default:
+                    break;
             }
-
-            @Override
-            public void onStartTrackingTouch(SeekBar seekBar) {
-            }
-
-            @Override
-            public void onStopTrackingTouch(SeekBar seekBar) {
-            }
-        });
-
-        toggleDrive.setOnCheckedChangeListener((b, isChecked) -> {
-            float speedMps = seekBarSpeed.getProgress() / 3.6f;
-            if (isChecked) {
-                mFilamentView.startDriving(speedMps);
-            } else {
-                mFilamentView.stopDriving();
-            }
+            return false;
         });
     }
 

@@ -8,6 +8,23 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- 顶部居中：实时车速 -->
+    <TextView
+        android:id="@+id/tv_speed"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:layout_centerHorizontal="true"
+        android:layout_marginTop="12dp"
+        android:shadowColor="#000000"
+        android:shadowDx="1"
+        android:shadowDy="1"
+        android:shadowRadius="4"
+        android:text="0 km/h"
+        android:textColor="#FFFFFF"
+        android:textSize="24sp"
+        android:textStyle="bold" />
+
     <!-- 左上角：车门 + 车灯 + 调试面板入口 -->
     <LinearLayout
         android:id="@+id/left_door_layout"
@@ -168,37 +185,24 @@
         android:layout_alignParentBottom="true"
         android:layout_margin="12dp"
         android:background="#CC000000"
-        android:gravity="center_vertical"
+        android:gravity="center"
         android:orientation="horizontal"
         android:padding="8dp">
 
-        <ToggleButton
-            android:id="@+id/toggle_drive"
-            android:layout_width="wrap_content"
+        <Button
+            android:id="@+id/btn_throttle"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:checked="false"
-            android:textOff="@string/drive_start"
-            android:textOn="@string/drive_stop" />
+            android:layout_weight="1"
+            android:text="@string/throttle" />
 
-        <SeekBar
-            android:id="@+id/seekbar_speed"
+        <Button
+            android:id="@+id/btn_brake"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:max="200"
-            android:progress="0" />
-
-        <TextView
-            android:id="@+id/tv_speed"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:minWidth="64dp"
-            android:gravity="end"
-            android:text="0 km/h"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp" />
+            android:text="@string/brake" />
     </LinearLayout>
 
     <!-- 以下为隐藏的位置调试控件（保留备用） -->

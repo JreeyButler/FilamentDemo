@@ -46,9 +46,13 @@ public final class CarLightSystem {
      */
     private static final String TAIL_MATERIAL_NAME = "CARRERA_4096_TAILLIGHTS";
     /**
-     * 尾灯开启时的自发光强度（emissiveFactor 已由模型设为红色）
+     * 尾灯（示宽/夜灯）自发光强度：浅红
      */
-    private static final float TAIL_EMISSIVE_STRENGTH = 18f;
+    private static final float TAIL_DIM_STRENGTH = 5f;
+    /**
+     * 刹车自发光强度：深红高亮
+     */
+    private static final float TAIL_BRAKE_STRENGTH = 32f;
     /**
      * 转向灯材质名（模型侧拆分生成）
      */
@@ -66,8 +70,9 @@ public final class CarLightSystem {
     private static final float REAR_GLOW_X = -1.90f;
     private static final float REAR_GLOW_Y = 0.59f;
     private static final float REAR_GLOW_Z = 0.32f;
-    private static final float REAR_GLOW_INTENSITY = 26_000f;  // 流明
-    private static final float REAR_GLOW_FALLOFF = 2.2f;       // 衰减半径（米）
+    private static final float REAR_GLOW_DIM = 8_000f;      // 示宽时的光溢出（流明）
+    private static final float REAR_GLOW_BRAKE = 40_000f;   // 刹车时的光溢出（流明）
+    private static final float REAR_GLOW_FALLOFF = 2.2f;    // 衰减半径（米）
 
     /**
      * 前照灯 entity（左右两颗），默认不加入场景（关灯状态）
@@ -88,6 +93,10 @@ public final class CarLightSystem {
      */
     private final int[] mRearGlowLightEntities = {-1, -1};
     private boolean mRearLightOn = false;
+    /**
+     * 刹车状态（按住刹车键）：深红高亮，优先于尾灯
+     */
+    private boolean mBrakeOn = false;
 
     // ── 转向灯闪烁状态 ────────────────────────────────────────────────────
     private boolean mTurnSignalOn = false;
@@ -200,7 +209,7 @@ public final class CarLightSystem {
             mRearGlowLightEntities[i] = glow;
             new LightManager.Builder(LightManager.Type.POINT)
                     .color(1.0f, 0.08f, 0.05f)
-                    .intensity(REAR_GLOW_INTENSITY)
+                    .intensity(REAR_GLOW_DIM)
                     .falloff(REAR_GLOW_FALLOFF)
                     .position(REAR_GLOW_X, REAR_GLOW_Y, baseZ[i])
                     .castShadows(false)
@@ -210,38 +219,74 @@ public final class CarLightSystem {
     }
 
     /**
-     * 开启或关闭车尾灯：切换尾灯材质 emissiveStrength + 红色点光。
+     * 开启/关闭尾灯（示宽/夜灯）：浅红。
+     * 刹车优先于尾灯：刹车时深红高亮，松开后若尾灯开启则回到浅红。
      */
     public void setRearLightEnabled(boolean enabled) {
-        if (mTailMaterialInstances.isEmpty() && mRearGlowLightEntities[0] == -1) {
+        if (mTailMaterialInstances.isEmpty()) {
             return;
         }
         Log.d(TAG, "setRearLightEnabled: " + enabled);
-        if (enabled && !mRearLightOn) {
-            for (MaterialInstance mi : mTailMaterialInstances) {
-                mi.setParameter("emissiveStrength", TAIL_EMISSIVE_STRENGTH);
-            }
-            for (int e : mRearGlowLightEntities) {
-                if (e != -1) {
-                    mScene.addEntity(e);
-                }
-            }
-            mRearLightOn = true;
-        } else if (!enabled && mRearLightOn) {
-            for (MaterialInstance mi : mTailMaterialInstances) {
-                mi.setParameter("emissiveStrength", 0f);
-            }
-            for (int e : mRearGlowLightEntities) {
-                if (e != -1) {
-                    mScene.removeEntity(e);
-                }
-            }
-            mRearLightOn = false;
-        }
+        mRearLightOn = enabled;
+        applyTail();
     }
 
     public boolean isRearLightOn() {
         return mRearLightOn;
+    }
+
+    /**
+     * 刹车：按住时深红高亮（不依赖尾灯开关），松开恢复。
+     */
+    public void setBrakeEnabled(boolean enabled) {
+        if (mTailMaterialInstances.isEmpty()) {
+            return;
+        }
+        if (mBrakeOn == enabled) {
+            return;
+        }
+        Log.d(TAG, "setBrakeEnabled: " + enabled);
+        mBrakeOn = enabled;
+        applyTail();
+    }
+
+    public boolean isBrakeOn() {
+        return mBrakeOn;
+    }
+
+    /**
+     * 按 刹车 > 尾灯 > 灭 的优先级刷新尾灯自发光与光溢出。
+     */
+    private void applyTail() {
+        float strength;
+        float glow;
+        if (mBrakeOn) {
+            strength = TAIL_BRAKE_STRENGTH;
+            glow = REAR_GLOW_BRAKE;
+        } else if (mRearLightOn) {
+            strength = TAIL_DIM_STRENGTH;
+            glow = REAR_GLOW_DIM;
+        } else {
+            strength = 0f;
+            glow = 0f;
+        }
+        for (MaterialInstance mi : mTailMaterialInstances) {
+            mi.setParameter("emissiveStrength", strength);
+        }
+
+        boolean visible = mRearLightOn || mBrakeOn;
+        LightManager lm = mEngine.getLightManager();
+        for (int e : mRearGlowLightEntities) {
+            if (e == -1) {
+                continue;
+            }
+            if (visible) {
+                mScene.addEntity(e);
+                lm.setIntensity(lm.getInstance(e), glow);
+            } else {
+                mScene.removeEntity(e);
+            }
+        }
     }
 
     /**
