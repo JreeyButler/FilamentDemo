@@ -36,9 +36,9 @@ public class GroundFactory {
 
         float[] vertices = {
                 -extentX, 0, -extentZ,
-                -extentX, 0,  extentZ,
-                 extentX, 0,  extentZ,
-                 extentX, 0, -extentZ
+                -extentX, 0, extentZ,
+                extentX, 0, extentZ,
+                extentX, 0, -extentZ
         };
 
         // packed TBN (tangent frame)，法线朝上
@@ -49,7 +49,7 @@ public class GroundFactory {
                 32767, 0, 32767, 32767
         };
 
-        short[] indices = { 0, 1, 2, 2, 3, 0 };
+        short[] indices = {0, 1, 2, 2, 3, 0};
 
         VertexBuffer vertexBuffer = new VertexBuffer.Builder()
                 .bufferCount(2)
@@ -109,9 +109,9 @@ public class GroundFactory {
 
         float[] vertices = {
                 -extentX, 0, -extentZ,
-                -extentX, 0,  extentZ,
-                 extentX, 0,  extentZ,
-                 extentX, 0, -extentZ
+                -extentX, 0, extentZ,
+                extentX, 0, extentZ,
+                extentX, 0, -extentZ
         };
 
         // 法线朝上的 packed TBN
@@ -122,7 +122,7 @@ public class GroundFactory {
                 32767, 0, 32767, 32767
         };
 
-        short[] indices = { 0, 1, 2, 2, 3, 0 };
+        short[] indices = {0, 1, 2, 2, 3, 0};
 
         VertexBuffer vertexBuffer = new VertexBuffer.Builder()
                 .bufferCount(2)
@@ -173,7 +173,7 @@ public class GroundFactory {
                 1, 0, 0, 0,
                 0, 1, 0, 0,
                 0, 0, 1, 0,
-                0, y,  0, 1
+                0, y, 0, 1
         };
         tcm.setTransform(ti, transform);
     }

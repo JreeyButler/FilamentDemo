@@ -52,9 +52,13 @@ public final class SpeedLinesFX {
     private static final int BEAM_MIN_COUNT = 5;
 
     private final int[] mBeamEntities = new int[SPEED_BEAM_COUNT * 2];
-    /** 每根光束当前 X 位置 */
+    /**
+     * 每根光束当前 X 位置
+     */
     private final float[] mBeamX = new float[SPEED_BEAM_COUNT];
-    /** 每根光束参数：y, z, 基准强度 */
+    /**
+     * 每根光束参数：y, z, 基准强度
+     */
     private final float[][] mBeamPlacement = new float[SPEED_BEAM_COUNT][3];
     private final MaterialInstance[] mBeamInstances = new MaterialInstance[SPEED_BEAM_COUNT];
     private boolean mBeamsBuilt = false;
@@ -65,9 +69,13 @@ public final class SpeedLinesFX {
      * 低速显示的光束即序号最小的那几根，稳定不闪烁。
      */
     private final int[] mBeamRank = new int[SPEED_BEAM_COUNT];
-    /** 每根光束当前是否在场景中 */
+    /**
+     * 每根光束当前是否在场景中
+     */
     private final boolean[] mBeamVisible = new boolean[SPEED_BEAM_COUNT];
-    /** 当前在场景中的光束根数 */
+    /**
+     * 当前在场景中的光束根数
+     */
     private int mVisibleBeamCount = 0;
 
     private final Engine mEngine;
@@ -178,7 +186,7 @@ public final class SpeedLinesFX {
         int desiredCount = mBeamFade <= 0f
                 ? 0
                 : (int) Math.round(BEAM_MIN_COUNT
-                        + (SPEED_BEAM_COUNT - BEAM_MIN_COUNT) * speedRatio);
+                + (SPEED_BEAM_COUNT - BEAM_MIN_COUNT) * speedRatio);
         for (int i = 0; i < SPEED_BEAM_COUNT; i++) {
             boolean shouldBeVisible = mBeamRank[i] < desiredCount;
             if (shouldBeVisible && !mBeamVisible[i]) {
@@ -227,12 +235,18 @@ public final class SpeedLinesFX {
         float q = v * (1f - f * s);
         float t = v * (1f - (1f - f) * s);
         switch (i % 6) {
-            case 0: return new float[]{v, t, p};
-            case 1: return new float[]{q, v, p};
-            case 2: return new float[]{p, v, t};
-            case 3: return new float[]{p, q, v};
-            case 4: return new float[]{t, p, v};
-            default: return new float[]{v, p, q};
+            case 0:
+                return new float[]{v, t, p};
+            case 1:
+                return new float[]{q, v, p};
+            case 2:
+                return new float[]{p, v, t};
+            case 3:
+                return new float[]{p, q, v};
+            case 4:
+                return new float[]{t, p, v};
+            default:
+                return new float[]{v, p, q};
         }
     }
 }

@@ -2,9 +2,9 @@ package com.imotor.filamentdemo;
 
 import android.util.Log;
 
-import com.google.android.filament.IndirectLight;
 import com.google.android.filament.Engine;
 import com.google.android.filament.EntityManager;
+import com.google.android.filament.IndirectLight;
 import com.google.android.filament.LightManager;
 import com.google.android.filament.MaterialInstance;
 import com.google.android.filament.Scene;
@@ -40,7 +40,9 @@ public final class ShowroomFx {
     private final Scene mScene;
     private final View mView;
     private final float mGroundY;
-    /** 灯条与速度光束共用的发光四边形工厂 */
+    /**
+     * 灯条与速度光束共用的发光四边形工厂
+     */
     private final EmissiveQuadFactory mQuadFactory;
 
     // ── 展厅主光 / 轮廓光 ─────────────────────────────────────────────────

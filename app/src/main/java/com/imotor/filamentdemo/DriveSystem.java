@@ -5,7 +5,6 @@ import android.util.Log;
 
 import com.google.android.filament.Engine;
 import com.google.android.filament.TransformManager;
-import com.google.android.filament.gltfio.FilamentAsset;
 
 /**
  * 行驶系统（原地展厅式：车身不动，轮子按速度自转）。

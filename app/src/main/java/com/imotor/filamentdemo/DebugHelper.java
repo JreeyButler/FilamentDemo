@@ -18,12 +18,12 @@ import java.util.List;
 
 /**
  * 调试辅助工具：在场景中绘制坐标轴和位置标记点，方便定位光源等对象的世界坐标。
- *
+ * <p>
  * 使用方式：
- *   DebugHelper debug = new DebugHelper(engine, scene, litMaterial);
- *   debug.addAxes(0, 0, 0, 5f);                    // 在原点画长度为 5 的坐标轴
- *   debug.addMarker(lightX, lightY, lightZ, 0.2f); // 在光源位置画黄色标记球（立方体）
- *   // 不需要时调用 debug.removeAll() 清除
+ * DebugHelper debug = new DebugHelper(engine, scene, litMaterial);
+ * debug.addAxes(0, 0, 0, 5f);                    // 在原点画长度为 5 的坐标轴
+ * debug.addMarker(lightX, lightY, lightZ, 0.2f); // 在光源位置画黄色标记球（立方体）
+ * // 不需要时调用 debug.removeAll() 清除
  */
 public class DebugHelper {
 
@@ -117,14 +117,14 @@ public class DebugHelper {
 
         // 8 个顶点，每个顶点 3 个 float（POSITION）
         float[] pos = {
-                -hx, -hy, -hz,   hx, -hy, -hz,   hx,  hy, -hz,  -hx,  hy, -hz, // 后面
-                -hx, -hy,  hz,   hx, -hy,  hz,   hx,  hy,  hz,  -hx,  hy,  hz  // 前面
+                -hx, -hy, -hz, hx, -hy, -hz, hx, hy, -hz, -hx, hy, -hz, // 后面
+                -hx, -hy, hz, hx, -hy, hz, hx, hy, hz, -hx, hy, hz  // 前面
         };
 
         // 法线朝外的 packed TBN（SHORT4 normalized），简化为全部朝上
         short[] tbn = new short[8 * 4];
         for (int i = 0; i < 8; i++) {
-            tbn[i * 4]     = 32767;
+            tbn[i * 4] = 32767;
             tbn[i * 4 + 1] = 0;
             tbn[i * 4 + 2] = 32767;
             tbn[i * 4 + 3] = 32767;
@@ -132,12 +132,12 @@ public class DebugHelper {
 
         // 12 个三角形，36 个索引
         short[] idx = {
-                0, 1, 2,  2, 3, 0,  // 后
-                4, 5, 6,  6, 7, 4,  // 前
-                0, 4, 7,  7, 3, 0,  // 左
-                1, 5, 6,  6, 2, 1,  // 右
-                3, 2, 6,  6, 7, 3,  // 上
-                0, 1, 5,  5, 4, 0   // 下
+                0, 1, 2, 2, 3, 0,  // 后
+                4, 5, 6, 6, 7, 4,  // 前
+                0, 4, 7, 7, 3, 0,  // 左
+                1, 5, 6, 6, 2, 1,  // 右
+                3, 2, 6, 6, 7, 3,  // 上
+                0, 1, 5, 5, 4, 0   // 下
         };
 
         VertexBuffer vb = new VertexBuffer.Builder()

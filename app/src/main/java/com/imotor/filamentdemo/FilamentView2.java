@@ -3,7 +3,6 @@ package com.imotor.filamentdemo;
 import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.AssetManager;
-
 import android.opengl.Matrix;
 import android.os.SystemClock;
 import android.util.AttributeSet;
@@ -13,7 +12,6 @@ import android.view.SurfaceView;
 
 import com.google.android.filament.Box;
 import com.google.android.filament.Engine;
-import com.google.android.filament.EntityManager;
 import com.google.android.filament.IndirectLight;
 import com.google.android.filament.Material;
 import com.google.android.filament.MaterialInstance;
@@ -24,19 +22,15 @@ import com.google.android.filament.TransformManager;
 import com.google.android.filament.View;
 import com.google.android.filament.android.UiHelper;
 import com.google.android.filament.gltfio.FilamentAsset;
-import com.google.android.filament.gltfio.Gltfio;
 import com.google.android.filament.utils.AutomationEngine;
 import com.google.android.filament.utils.Float3;
 import com.google.android.filament.utils.KTX1Loader;
 import com.google.android.filament.utils.Manipulator;
 import com.google.android.filament.utils.ModelViewer;
-import com.google.android.filament.utils.Utils;
 
 import java.io.IOException;
 import java.io.InputStream;
-
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -94,7 +88,9 @@ public class FilamentView2 extends SurfaceView {
     private SpeedLinesFX mSpeedLines;
     private CarLightSystem mCarLights;
     private RenderPipeline mRenderPipeline;
-    /** 最近一次光束可见根数（省电调度判定用） */
+    /**
+     * 最近一次光束可见根数（省电调度判定用）
+     */
     private int mLastVisibleBeams = 0;
 
     static {
@@ -677,7 +673,9 @@ public class FilamentView2 extends SurfaceView {
             renderFrameScheduled();
         }
 
-        /** 渲染按忙碌/静止三段式调度 */
+        /**
+         * 渲染按忙碌/静止三段式调度
+         */
         private void renderFrameScheduled() {
             // 三段式调度省电：
             // 1) 场景忙碌（行驶/动画/手势/光束）→ 满帧

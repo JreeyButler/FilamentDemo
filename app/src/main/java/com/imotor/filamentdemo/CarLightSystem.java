@@ -45,7 +45,9 @@ public final class CarLightSystem {
     private float mLightDirY;
     private float mLightDirZ;
 
-    /** 当前两颗灯的位置（运行时可调整） */
+    /**
+     * 当前两颗灯的位置（运行时可调整）
+     */
     private final float[][] mLightPos = {{0f, 0f, 0f}, {0f, 0f, 0f}};
 
     private final Engine mEngine;
