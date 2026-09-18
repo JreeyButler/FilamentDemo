@@ -42,9 +42,10 @@ public final class EmissiveQuadFactory {
 
     private static final String MATERIAL_PATH = "emissive.filamat";
     /**
-     * 顶灯带相对地面的高度（米）
+     * 顶灯带相对地面的高度（米）。
+     * 抬到常规取景画幅之上，让用户只看到辉光而不是灯条本体。
      */
-    public static final float LIGHT_BAR_HEIGHT = 3.2f;
+    public static final float LIGHT_BAR_HEIGHT = 6.0f;
 
     /**
      * 自发光材质（emissive.filamat）
