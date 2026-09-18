@@ -137,6 +137,10 @@ public class FilamentView2 extends SurfaceView {
         View.DynamicResolutionOptions options = view.getDynamicResolutionOptions();
         options.enabled = true;
         options.quality = View.QualityLevel.MEDIUM;
+        // 收紧动态分辨率的降档下限：默认低端机会一路缩到 ~0.3x 造成"糊成一片"；
+        // 宁可帧率略降（特效可再拆分关闭），保持画面基本清晰
+        options.minScale = 0.7f;
+        options.maxScale = 1.0f;
         view.setDynamicResolutionOptions(options);
 
         // ── 展厅级画面设置（ACES/Bloom/SSR/抗锯齿）──
