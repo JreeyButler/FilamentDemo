@@ -555,9 +555,9 @@ public class FilamentView2 extends SurfaceView {
      */
     private static final float WHEEL_RADIUS = 0.33f;
     /**
-     * 最大速度 m/s（与 UI SeekBar 量程一致）
+     * 最大速度 m/s：200 km/h ≈ 55.6 m/s
      */
-    public static final float MAX_SPEED = 10f;
+    public static final float MAX_SPEED = 200f / 3.6f;
     /**
      * 轮子转向符号：真机校准结果为 -1（否则看上去是开倒车）。
      */
@@ -1230,7 +1230,7 @@ public class FilamentView2 extends SurfaceView {
         if (mIntroPlaying || mTouchActive) {
             return true;
         }
-        if (mTargetSpeed > 0f || mCurrentSpeed > 0.01f || mBeamsInScene) {
+        if (mTargetSpeed > 0f || mCurrentSpeed > 0.01f || mVisibleBeamCount > 0) {
             return true;
         }
         if (SystemClock.uptimeMillis() < mInteractHoldUntilMs) {
@@ -1431,6 +1431,11 @@ public class FilamentView2 extends SurfaceView {
     private static final float BEAM_INTENSITY_MIN = 8f;
     private static final float BEAM_INTENSITY_MAX = 26f;
 
+    /**
+     * 可见光束数下限：低速时最少显示 5 根，满速显示全部 60 根
+     */
+    private static final int BEAM_MIN_COUNT = 5;
+
     private final int[] mBeamEntities = new int[SPEED_BEAM_COUNT * 2];
     /** 每根光束当前 X 位置 */
     private final float[] mBeamX = new float[SPEED_BEAM_COUNT];
@@ -1439,8 +1444,16 @@ public class FilamentView2 extends SurfaceView {
     private MaterialInstance[] mBeamInstances;
     private boolean mBeamsBuilt = false;
     private float mBeamFade = 0f;
-    private boolean mBeamsInScene = false;
     private long mBeamLastFrameNs = -1;
+    /**
+     * 每根光束的显示优先序号（随机洗牌）：rank < activeCount 者在场景中。
+     * 低速显示的光束即序号最小的那几根，稳定不闪烁。
+     */
+    private final int[] mBeamRank = new int[SPEED_BEAM_COUNT];
+    /** 每根光束当前是否在场景中 */
+    private final boolean[] mBeamVisible = new boolean[SPEED_BEAM_COUNT];
+    /** 当前在场景中的光束根数 */
+    private int mVisibleBeamCount = 0;
 
     /**
      * 一次性生成光束：绕车身圆柱随机分布的细长彩色发光条（局部原点在束中心，
@@ -1485,9 +1498,21 @@ public class FilamentView2 extends SurfaceView {
         mBeamsBuilt = true;
         Log.d(TAG, "buildSpeedLines: 创建 " + SPEED_BEAM_COUNT + " 根速度光束");
 
+        // 显示优先序号：随机洗牌，低速时显示的 5 根分布随机且稳定
+        java.util.Random shuffle = new java.util.Random(1024L);
+        for (int i = 0; i < SPEED_BEAM_COUNT; i++) {
+            mBeamRank[i] = i;
+        }
+        for (int i = SPEED_BEAM_COUNT - 1; i > 0; i--) {
+            int j = shuffle.nextInt(i + 1);
+            int tmp = mBeamRank[i];
+            mBeamRank[i] = mBeamRank[j];
+            mBeamRank[j] = tmp;
+        }
+
         // 光束只在行驶时入场景渲染（停止时整组移除，避免黑色条挡住背景）
         scene.removeEntities(mBeamEntities);
-        mBeamsInScene = false;
+        mVisibleBeamCount = 0;
     }
 
     /**
@@ -1516,16 +1541,30 @@ public class FilamentView2 extends SurfaceView {
         }
         float move = mCurrentSpeed * dt; // 1:1 与滚动轮速同步
 
-        // 场景进出光束：开始行驶才渲染；完全停下（fade 归零）即整组移除
-        if (!mBeamsInScene && mBeamFade > 0f) {
-            mModelViewer.getScene().addEntities(mBeamEntities);
-            mBeamsInScene = true;
-        } else if (mBeamsInScene && mBeamFade == 0f && target == 0f) {
-            mModelViewer.getScene().removeEntities(mBeamEntities);
-            mBeamsInScene = false;
-            return;
+        // 可见根数随速度：低速 5 根 → 高速满编 60 根（count = 5 + 55×speedRatio）；
+        // 完全停下（fade 归零）后全部移出场景，避免黑色不透明条遮挡背景
+        float speedRatio = Math.min(1f, mCurrentSpeed / MAX_SPEED);
+        int desiredCount = mBeamFade <= 0f
+                ? 0
+                : (int) Math.round(BEAM_MIN_COUNT
+                        + (SPEED_BEAM_COUNT - BEAM_MIN_COUNT) * speedRatio);
+        Scene scene = mModelViewer.getScene();
+        for (int i = 0; i < SPEED_BEAM_COUNT; i++) {
+            boolean shouldBeVisible = mBeamRank[i] < desiredCount;
+            if (shouldBeVisible && !mBeamVisible[i]) {
+                scene.addEntity(mBeamEntities[i * 2]);
+                scene.addEntity(mBeamEntities[i * 2 + 1]);
+                mBeamVisible[i] = true;
+                mVisibleBeamCount++;
+            } else if (!shouldBeVisible && mBeamVisible[i]) {
+                scene.removeEntity(mBeamEntities[i * 2]);
+                scene.removeEntity(mBeamEntities[i * 2 + 1]);
+                mBeamVisible[i] = false;
+                mVisibleBeamCount--;
+            }
         }
-        if (!mBeamsInScene && mBeamFade == 0f) {
+        // 全部不可见且静止：跳过后续更新
+        if (mVisibleBeamCount == 0 && mBeamFade <= 0f && target == 0f) {
             return;
         }
 

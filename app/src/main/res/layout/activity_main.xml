@@ -164,7 +164,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:max="100"
+            android:max="200"
             android:progress="0" />
 
         <TextView
@@ -174,7 +174,7 @@
             android:layout_marginStart="8dp"
             android:minWidth="64dp"
             android:gravity="end"
-            android:text="0.0 m/s"
+            android:text="0 km/h"
             android:textColor="#FFFFFF"
             android:textSize="12sp" />
     </LinearLayout>

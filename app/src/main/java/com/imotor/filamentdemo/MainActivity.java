@@ -133,11 +133,12 @@ public class MainActivity extends AppCompatActivity {
         seekBarSpeed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
-                float speed = progress / 10f; // 0~100 → 0~10 m/s
-                tvSpeed.setText(String.format(Locale.US, "%.1f m/s", speed));
+                // progress 即 km/h（0~200），内部换算为 m/s
+                float speedMps = progress / 3.6f;
+                tvSpeed.setText(String.format(Locale.US, "%d km/h", progress));
                 // 行驶中拖动速度条实时调速；停驶时只记录，等 Start 生效
                 if (toggleDrive.isChecked()) {
-                    mFilamentView.startDriving(speed);
+                    mFilamentView.startDriving(speedMps);
                 }
             }
 
@@ -151,9 +152,9 @@ public class MainActivity extends AppCompatActivity {
         });
 
         toggleDrive.setOnCheckedChangeListener((b, isChecked) -> {
-            float speed = seekBarSpeed.getProgress() / 10f;
+            float speedMps = seekBarSpeed.getProgress() / 3.6f;
             if (isChecked) {
-                mFilamentView.startDriving(speed);
+                mFilamentView.startDriving(speedMps);
             } else {
                 mFilamentView.stopDriving();
             }
