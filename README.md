@@ -62,8 +62,7 @@ FilamentDemo/
 │   ├── src/main/
 │   │   ├── assets/
 │   │   │   ├── models/                       # glTF/GLB 模型（仅打包此目录）
-│   │   │   │   ├── cartoon_sports_car_taillights.glb  # 当前使用（尾灯/转向灯已拆分）
-│   │   │   │   └── executive_sedan.glb
+│   │   │   │   └── cartoon_sports_car_taillights.glb  # 当前使用（尾灯/转向灯已拆分）
 │   │   │   ├── skins/                        # 车衣贴图（按模型 UV 图集制作）
 │   │   │   │   ├── skin_sakura.jpg
 │   │   │   │   └── skin_cyber.jpg
@@ -88,7 +87,9 @@ FilamentDemo/
 │   │   └── AndroidManifest.xml
 │   └── build.gradle
 ├── groundShadow.mat                          # 历史材质源（现地面已改用 lit.filamat）
-├── tools/models/cartoon_sports_car.glb       # 源车模（不打包，供工具脚本生成/烘焙用）
+├── tools/models/                             # 源车模（不打包，供工具脚本生成/烘焙用）
+│   ├── cartoon_sports_car.glb
+│   └── executive_sedan.glb
 ├── tools/split_taillights.py                 # 开发脚本：拆分尾灯/转向灯几何材质，生成新模型（不打包）
 ├── tools/make_skin.py                        # 开发脚本：由 glb UV 图集生成示例车衣（不打包）
 ├── tools/project_skin.py                     # 开发脚本：JPG 3D 投影烘焙成车衣（推荐，不打包）
