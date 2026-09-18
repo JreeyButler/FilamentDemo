@@ -34,6 +34,11 @@ public final class ShowroomFx {
      * 行驶氛围：满速时环境光压暗到的比例（光束为 unlit，不受影响，因而更突出）。
      */
     private static final float DRIVE_IBL_MIN_SCALE = 0.15f;
+    /**
+     * 变暗曲线的软拐点（m/s），与速度光束同款非线性手感：
+     * 低速段灯光变暗快，高速段趋缓。15 m/s ≈ 54 km/h，~100 km/h 时已接近最暗。
+     */
+    private static final float DRIVE_DIM_KNEE = 15f;
 
     private boolean mIntroPlaying = true;
     private long mIntroStartTimeNs = -1;
@@ -171,18 +176,20 @@ public final class ShowroomFx {
     }
 
     /**
-     * 行驶氛围：速度越高环境光越暗，制造"越跑越暗、光束越亮眼"的氛围。
-     * 光束/灯条为 unlit 自发光，不随环境光变化，因此不被压暗。
+     * 行驶氛围：速度越高环境光/主光/顶灯条越暗，制造"越跑越暗、光束越亮眼"的氛围。
+     * 变暗采用与速度光束同款的非线性饱和曲线（低速变化快、高速趋缓）。
+     * 速度光束为 unlit 自发光，不会被压暗。
      * 开场渐亮动画期间由 updateIntro 接管，此方法不生效。
      *
-     * @param speedRatio 当前速度占最高速的比例 [0,1]
+     * @param currentSpeed 当前车速（m/s）
      */
-    public void updateDriveMood(float speedRatio) {
+    public void updateDriveMood(float currentSpeed) {
         if (mIntroPlaying) {
             return;
         }
-        float r = Math.max(0f, Math.min(1f, speedRatio));
-        float scale = 1f - (1f - DRIVE_IBL_MIN_SCALE) * r;
+        // 非线性变暗程度：0（静止）→ 1（高速趋近饱和）
+        float dim = 1f - (float) Math.exp(-Math.max(0f, currentSpeed) / DRIVE_DIM_KNEE);
+        float scale = 1f - (1f - DRIVE_IBL_MIN_SCALE) * dim;
 
         // 环境光
         if (mIndirectLight != null) {

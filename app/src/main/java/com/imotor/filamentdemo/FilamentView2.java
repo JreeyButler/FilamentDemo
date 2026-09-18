@@ -666,8 +666,8 @@ public class FilamentView2 extends SurfaceView {
             // 行驶驱动（轮子自转）
             mDrive.update(frameTimeNanos);
 
-            // 行驶氛围：随速度压暗环境光，突出自发光光束
-            mShowroomFx.updateDriveMood(mDrive.getCurrentSpeed() / DriveSystem.MAX_SPEED);
+            // 行驶氛围：随速度非线性压暗环境光/主光/灯条，突出自发光光束
+            mShowroomFx.updateDriveMood(mDrive.getCurrentSpeed());
 
             // 速度光束 + 相机抖动
             mLastVisibleBeams = mSpeedLines.update(frameTimeNanos, mDrive.getCurrentSpeed());
