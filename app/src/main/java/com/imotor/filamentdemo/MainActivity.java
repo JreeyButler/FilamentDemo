@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.view.Window;
+import android.widget.Button;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.ToggleButton;
@@ -27,6 +28,10 @@ public class MainActivity extends AppCompatActivity {
     private FilamentView2 mFilamentView;
     private TextView mTvLightDir;
     private TextView mTvLightPos;
+    /**
+     * 车衣索引：0 = 原漆，1..n = CarSkinSystem.BUILTIN_SKIN_PATHS
+     */
+    private int mSkinIndex = 0;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -123,6 +128,20 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btn_pos_reset).setOnClickListener(v -> {
             mFilamentView.resetLightPosition();
             updatePosLabel();
+        });
+
+        // ── 车衣切换：原漆 → 樱花 → 霓虹 → 原漆 ────────────────────────────
+        Button btnSkin = findViewById(R.id.btn_skin);
+        btnSkin.setOnClickListener(v -> {
+            int skinCount = CarSkinSystem.BUILTIN_SKIN_PATHS.length;
+            mSkinIndex = (mSkinIndex + 1) % (skinCount + 1);
+            if (mSkinIndex == 0) {
+                mFilamentView.resetCarSkin();
+                btnSkin.setText(R.string.skin_switch);
+            } else {
+                mFilamentView.applyCarSkin(CarSkinSystem.BUILTIN_SKIN_PATHS[mSkinIndex - 1]);
+                btnSkin.setText(CarSkinSystem.BUILTIN_SKIN_NAMES[mSkinIndex - 1]);
+            }
         });
 
         // ── 行驶速度控制（原地展厅式：轮子自转）──────────────────────────────

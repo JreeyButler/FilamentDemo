@@ -20,6 +20,8 @@
   （低速 5 根 → 满速 60 根）（`SpeedLinesFX` + Bloom 辉光）。
 - **相机抖动**：行驶中相机眼点按速度叠加多频正弦噪声晃动，随速度渐显渐隐（`RenderPipeline`）。
 - **车门开合交互**：`DoorController` 接口，对左右前门 entity 进行铰链平移 + Y 轴 ±35° 旋转。
+- **车衣换装**：非破坏性替换外观车漆的 `baseColorMap`（复制材质实例），内置"樱花 / 霓虹"示例车衣可循环切换，
+  内饰/玻璃保持原样（`CarSkinSystem` + `assets/skins/`）。
 - **相机轨道控制**：ORBIT/PAN/ZOOM 自定义手势（`CameraGestureListener`），带阻尼与防穿地限制。
 - **全屏沉浸**：Edge-to-Edge + 隐藏状态栏/导航栏（`NoActionBar`），下滑临时呼出。
 - **省电渲染调度**：忙碌（行驶/动画/手势/光束在场）满帧 → 静止 10fps 冷却 3 秒 → 深睡停止调度，
@@ -39,6 +41,7 @@
 | [RenderPipeline](app/src/main/java/com/imotor/filamentdemo/RenderPipeline.java) | 自管渲染：反射读取 ModelViewer 的 `swapChain`/`resourceLoader`，相机姿态 + 速度抖动 |
 | [EmissiveQuadFactory](app/src/main/java/com/imotor/filamentdemo/EmissiveQuadFactory.java) | emissive 材质加载 + 发光四边形工厂（灯条/光束共用） |
 | [CameraGestureListener](app/src/main/java/com/imotor/filamentdemo/FilamentView2.java)（内部类） | ORBIT/PAN/ZOOM 手势识别、阻尼、防穿地 |
+| [CarSkinSystem](app/src/main/java/com/imotor/filamentdemo/CarSkinSystem.java) | 车衣换装：复制外观材质实例、替换 `baseColorMap`、纹理上传/释放 |
 | [GroundFactory](app/src/main/java/com/imotor/filamentdemo/GroundFactory.java) | 地面 Mesh 构造工具 |
 | [DebugHelper](app/src/main/java/com/imotor/filamentdemo/DebugHelper.java) | 调试辅助标记（坐标轴/灯位/落点，默认关闭） |
 
@@ -56,6 +59,9 @@ FilamentDemo/
 │   │   │   ├── models/                       # glTF/GLB 模型
 │   │   │   │   ├── cartoon_sports_car.glb    # 当前使用的车模
 │   │   │   │   └── executive_sedan.glb
+│   │   │   ├── skins/                        # 车衣贴图（按模型 UV 图集制作）
+│   │   │   │   ├── skin_sakura.jpg
+│   │   │   │   └── skin_cyber.jpg
 │   │   │   ├── neutral/neutral_ibl.ktx       # IBL 环境贴图
 │   │   │   ├── emissive.filamat              # 发光四边形材质（灯条/光束）
 │   │   │   ├── lit.filamat / lit.mat         # lit 地面材质（编译产物/源）
@@ -69,6 +75,7 @@ FilamentDemo/
 │   │   │   ├── CarLightSystem.java           # 车头灯系统
 │   │   │   ├── RenderPipeline.java           # 自管渲染管线（含相机抖动）
 │   │   │   ├── EmissiveQuadFactory.java      # 发光四边形工厂
+│   │   │   ├── CarSkinSystem.java            # 车衣换装（替换 baseColorMap）
 │   │   │   ├── DoorController.java           # 车门控制接口
 │   │   │   ├── GroundFactory.java            # 地面 Mesh 构造工具
 │   │   │   └── DebugHelper.java              # 调试辅助标记
@@ -76,6 +83,7 @@ FilamentDemo/
 │   │   └── AndroidManifest.xml
 │   └── build.gradle
 ├── groundShadow.mat                          # 历史材质源（现地面已改用 lit.filamat）
+├── tools/make_skin.py                        # 开发脚本：由 glb UV 图集生成示例车衣（不打包）
 ├── gradle/libs.versions.toml                 # 依赖版本目录
 ├── build.gradle / settings.gradle
 └── LICENSE.md
@@ -114,6 +122,7 @@ FilamentDemo/
 - **open/close left/right door**：开/关左/右前门。
 - **open/close front light**：开/关车头前照灯。
 - **Light Dir / Light Pos**：车灯光轴与灯位调试面板（开发用）。
+- **Skin**：循环切换车衣（原漆 → 樱花 → 霓虹），只改外观车漆，内饰/玻璃保持原样。
 - **Start / Stop + 速度条**：启动行驶（原地展厅式，轮子自转 + 速度光束 + 相机抖动），
   速度条 0~200 km/h，行驶中可实时拖动调速。
 

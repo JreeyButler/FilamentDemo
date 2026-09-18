@@ -17,4 +17,7 @@
     <!-- Drive controls -->
     <string name="drive_start">Start</string>
     <string name="drive_stop">Stop</string>
+
+    <!-- Car skin -->
+    <string name="skin_switch">Skin</string>
 </resources>

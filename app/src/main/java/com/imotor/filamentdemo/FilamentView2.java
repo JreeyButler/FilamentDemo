@@ -88,6 +88,7 @@ public class FilamentView2 extends SurfaceView {
     private SpeedLinesFX mSpeedLines;
     private CarLightSystem mCarLights;
     private RenderPipeline mRenderPipeline;
+    private CarSkinSystem mCarSkin;
     /**
      * 最近一次光束可见根数（省电调度判定用）
      */
@@ -162,6 +163,9 @@ public class FilamentView2 extends SurfaceView {
         mDrive.collectWheels(mModelViewer.getAsset());
 
         addGround(mEngine, mModelViewer.getScene());
+        // 换车衣系统：收集外观车漆图元（非破坏性替换 baseColorMap）
+        mCarSkin = new CarSkinSystem(mEngine, getContext());
+        mCarSkin.collect(mModelViewer.getAsset());
         // 发光四边形工厂（灯条/速度光束共用）
         mQuadFactory = EmissiveQuadFactory.create(getContext(), mEngine);
         // 车灯在模型包围盒计算完成后（addGround 内已读取包围盒）再创建
@@ -460,6 +464,33 @@ public class FilamentView2 extends SurfaceView {
 
     public void resetLightPosition() {
         mCarLights.resetLightPosition();
+    }
+
+    /**
+     * 换车衣：传入 assets 内贴图路径（如 "skins/skin_sakura.jpg"）；传 null 还原原漆。
+     */
+    public void applyCarSkin(String assetPath) {
+        if (mCarSkin == null) {
+            return;
+        }
+        mCarSkin.applySkin(assetPath);
+        wakeUp();
+    }
+
+    /**
+     * 还原为原漆
+     */
+    public void resetCarSkin() {
+        applyCarSkin(null);
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        // 先释放换装资源，避免 ModelViewer 销毁 Engine 时残留
+        if (mCarSkin != null) {
+            mCarSkin.destroy();
+        }
+        super.onDetachedFromWindow();
     }
 
     public DoorController getDoorController() {
