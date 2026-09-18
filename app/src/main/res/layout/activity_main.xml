@@ -54,13 +54,13 @@
 
     </LinearLayout>
 
-    <!-- 光源方向调节面板（右下角） -->
+    <!-- 光源方向调节面板（右下角，悬浮在速度面板上方） -->
     <LinearLayout
         android:id="@+id/light_dir_panel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentEnd="true"
-        android:layout_alignParentBottom="true"
+        android:layout_above="@+id/drive_panel"
         android:layout_margin="6dp"
         android:background="#CC000000"
         android:orientation="vertical"
@@ -96,13 +96,13 @@
         <Button android:id="@+id/btn_dir_reset" android:layout_width="wrap_content" android:layout_height="36dp" android:padding="0dp" android:text="@string/reset" android:textSize="12sp" />
     </LinearLayout>
 
-    <!-- 光源位置调节面板（右下角，与方向面板互斥显示） -->
+    <!-- 光源位置调节面板（右下角，与方向面板互斥显示，悬浮在速度面板上方） -->
     <LinearLayout
         android:id="@+id/light_pos_panel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_alignParentEnd="true"
-        android:layout_alignParentBottom="true"
+        android:layout_above="@+id/drive_panel"
         android:layout_margin="6dp"
         android:background="#CC000000"
         android:orientation="vertical"
@@ -136,6 +136,47 @@
         </LinearLayout>
 
         <Button android:id="@+id/btn_pos_reset" android:layout_width="wrap_content" android:layout_height="36dp" android:padding="0dp" android:text="@string/reset" android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 底部中央：行驶速度控制（原地展厅式，轮子驱动） -->
+    <LinearLayout
+        android:id="@+id/drive_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:layout_margin="12dp"
+        android:background="#CC000000"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="8dp">
+
+        <ToggleButton
+            android:id="@+id/toggle_drive"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="false"
+            android:textOff="@string/drive_start"
+            android:textOn="@string/drive_stop" />
+
+        <SeekBar
+            android:id="@+id/seekbar_speed"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:max="100"
+            android:progress="0" />
+
+        <TextView
+            android:id="@+id/tv_speed"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:minWidth="64dp"
+            android:gravity="end"
+            android:text="0.0 m/s"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
     </LinearLayout>
 
     <!-- 以下为隐藏的位置调试控件（保留备用） -->

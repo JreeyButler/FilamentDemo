@@ -13,4 +13,8 @@
     <string name="light_dir_adjust">Light Dir</string>
     <string name="light_pos_adjust">Light Pos</string>
     <string name="reset">Reset</string>
+
+    <!-- Drive controls -->
+    <string name="drive_start">Start</string>
+    <string name="drive_stop">Stop</string>
 </resources>

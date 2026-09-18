@@ -3,11 +3,14 @@ package com.imotor.filamentdemo;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.ToggleButton;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+
+import java.util.Locale;
 
 /**
  * @author Yan.Liangliang
@@ -62,12 +65,12 @@ public class MainActivity extends AppCompatActivity {
             if (show) updateDirLabel();
         });
 
-        findViewById(R.id.btn_dir_x_inc).setOnClickListener(v -> adjustDir( 0.1f, 0,     0));
-        findViewById(R.id.btn_dir_x_dec).setOnClickListener(v -> adjustDir(-0.1f, 0,     0));
-        findViewById(R.id.btn_dir_y_inc).setOnClickListener(v -> adjustDir(0,  0.1f,     0));
-        findViewById(R.id.btn_dir_y_dec).setOnClickListener(v -> adjustDir(0, -0.1f,     0));
-        findViewById(R.id.btn_dir_z_inc).setOnClickListener(v -> adjustDir(0,     0,  0.1f));
-        findViewById(R.id.btn_dir_z_dec).setOnClickListener(v -> adjustDir(0,     0, -0.1f));
+        findViewById(R.id.btn_dir_x_inc).setOnClickListener(v -> adjustDir(0.1f, 0, 0));
+        findViewById(R.id.btn_dir_x_dec).setOnClickListener(v -> adjustDir(-0.1f, 0, 0));
+        findViewById(R.id.btn_dir_y_inc).setOnClickListener(v -> adjustDir(0, 0.1f, 0));
+        findViewById(R.id.btn_dir_y_dec).setOnClickListener(v -> adjustDir(0, -0.1f, 0));
+        findViewById(R.id.btn_dir_z_inc).setOnClickListener(v -> adjustDir(0, 0, 0.1f));
+        findViewById(R.id.btn_dir_z_dec).setOnClickListener(v -> adjustDir(0, 0, -0.1f));
         findViewById(R.id.btn_dir_reset).setOnClickListener(v -> {
             mFilamentView.resetLightDirection();
             updateDirLabel();
@@ -83,15 +86,49 @@ public class MainActivity extends AppCompatActivity {
             if (show) updatePosLabel();
         });
 
-        findViewById(R.id.btn_pos_x_inc).setOnClickListener(v -> adjustPos( 0.1f, 0,     0));
-        findViewById(R.id.btn_pos_x_dec).setOnClickListener(v -> adjustPos(-0.1f, 0,     0));
-        findViewById(R.id.btn_pos_y_inc).setOnClickListener(v -> adjustPos(0,  0.1f,     0));
-        findViewById(R.id.btn_pos_y_dec).setOnClickListener(v -> adjustPos(0, -0.1f,     0));
-        findViewById(R.id.btn_pos_z_inc).setOnClickListener(v -> adjustPos(0,     0,  0.1f));
-        findViewById(R.id.btn_pos_z_dec).setOnClickListener(v -> adjustPos(0,     0, -0.1f));
+        findViewById(R.id.btn_pos_x_inc).setOnClickListener(v -> adjustPos(0.1f, 0, 0));
+        findViewById(R.id.btn_pos_x_dec).setOnClickListener(v -> adjustPos(-0.1f, 0, 0));
+        findViewById(R.id.btn_pos_y_inc).setOnClickListener(v -> adjustPos(0, 0.1f, 0));
+        findViewById(R.id.btn_pos_y_dec).setOnClickListener(v -> adjustPos(0, -0.1f, 0));
+        findViewById(R.id.btn_pos_z_inc).setOnClickListener(v -> adjustPos(0, 0, 0.1f));
+        findViewById(R.id.btn_pos_z_dec).setOnClickListener(v -> adjustPos(0, 0, -0.1f));
         findViewById(R.id.btn_pos_reset).setOnClickListener(v -> {
             mFilamentView.resetLightPosition();
             updatePosLabel();
+        });
+
+        // ── 行驶速度控制（原地展厅式：轮子自转）──────────────────────────────
+        ToggleButton toggleDrive = findViewById(R.id.toggle_drive);
+        SeekBar seekBarSpeed = findViewById(R.id.seekbar_speed);
+        TextView tvSpeed = findViewById(R.id.tv_speed);
+
+        seekBarSpeed.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                float speed = progress / 10f; // 0~100 → 0~10 m/s
+                tvSpeed.setText(String.format(Locale.US, "%.1f m/s", speed));
+                // 行驶中拖动速度条实时调速；停驶时只记录，等 Start 生效
+                if (toggleDrive.isChecked()) {
+                    mFilamentView.startDriving(speed);
+                }
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+            }
+        });
+
+        toggleDrive.setOnCheckedChangeListener((b, isChecked) -> {
+            float speed = seekBarSpeed.getProgress() / 10f;
+            if (isChecked) {
+                mFilamentView.startDriving(speed);
+            } else {
+                mFilamentView.stopDriving();
+            }
         });
     }
 
