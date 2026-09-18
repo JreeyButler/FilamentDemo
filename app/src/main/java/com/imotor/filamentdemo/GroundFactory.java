@@ -20,40 +20,66 @@ import java.nio.ByteOrder;
 public class GroundFactory {
 
     /**
-     * 创建透明阴影接收地面（groundShadow.filamat），用于显示车身投影。
+     * 圆盘圆周分段数，越大越圆滑。
      */
-    public static int createGroundPlane(
-            Engine engine,
-            Scene scene,
-            MaterialInstance shadowMaterialInstance,
-            float boundingExtentX,
-            float boundingExtentY,
-            float boundingExtentZ,
-            float minY) {
+    private static final int DISC_SEGMENTS = 128;
 
-        float extentX = 10.0f * boundingExtentX;
-        float extentZ = 10.0f * boundingExtentZ;
+    /**
+     * 圆盘网格（顶点/索引缓冲 + 半径）。
+     */
+    private static final class DiscMesh {
+        final VertexBuffer vertexBuffer;
+        final IndexBuffer indexBuffer;
+        final float radius;
 
-        float[] vertices = {
-                -extentX, 0, -extentZ,
-                -extentX, 0, extentZ,
-                extentX, 0, extentZ,
-                extentX, 0, -extentZ
-        };
+        DiscMesh(VertexBuffer vertexBuffer, IndexBuffer indexBuffer, float radius) {
+            this.vertexBuffer = vertexBuffer;
+            this.indexBuffer = indexBuffer;
+            this.radius = radius;
+        }
+    }
 
-        // packed TBN (tangent frame)，法线朝上
-        short[] tbn = {
-                32767, 0, 32767, 32767,
-                32767, 0, 32767, 32767,
-                32767, 0, 32767, 32767,
-                32767, 0, 32767, 32767
-        };
+    /**
+     * 以竖直法线（+Y）构造一个圆盘网格：中心点 + 圆周顶点 + 首尾重合接缝点。
+     */
+    private static DiscMesh buildDisc(Engine engine, float radius) {
+        int segs = DISC_SEGMENTS;
+        int ringCount = segs + 1;          // 含与起点重合的接缝点
+        int vertexCount = ringCount + 1;   // 再加中心点（索引 0）
 
-        short[] indices = {0, 1, 2, 2, 3, 0};
+        float[] vertices = new float[vertexCount * 3];
+        short[] tbn = new short[vertexCount * 4];
+        // 中心点
+        vertices[0] = 0f;
+        vertices[1] = 0f;
+        vertices[2] = 0f;
+        // 圆周点（从中心开始写 tbn，法线朝上）
+        for (int i = 0; i < vertexCount; i++) {
+            int vi = i * 3;
+            if (i > 0) {
+                double angle = 2.0 * Math.PI * (i - 1) / segs;
+                vertices[vi] = (float) (Math.cos(angle) * radius);
+                vertices[vi + 1] = 0f;
+                vertices[vi + 2] = (float) (Math.sin(angle) * radius);
+            }
+            int ti = i * 4;
+            tbn[ti] = 32767;
+            tbn[ti + 1] = 0;
+            tbn[ti + 2] = 32767;
+            tbn[ti + 3] = 32767;
+        }
+
+        // 三角扇：中心 → 相邻两个圆周点（逆时针，法线朝上）
+        short[] indices = new short[segs * 3];
+        for (int i = 0; i < segs; i++) {
+            indices[i * 3] = 0;
+            indices[i * 3 + 1] = (short) (i + 2);
+            indices[i * 3 + 2] = (short) (i + 1);
+        }
 
         VertexBuffer vertexBuffer = new VertexBuffer.Builder()
                 .bufferCount(2)
-                .vertexCount(4)
+                .vertexCount(vertexCount)
                 .attribute(VertexBuffer.VertexAttribute.POSITION, 0,
                         VertexBuffer.AttributeType.FLOAT3, 0, 3 * 4)
                 .attribute(VertexBuffer.VertexAttribute.TANGENTS, 1,
@@ -77,11 +103,31 @@ public class GroundFactory {
         ib.asShortBuffer().put(indices);
         indexBuffer.setBuffer(engine, ib);
 
+        return new DiscMesh(vertexBuffer, indexBuffer, radius);
+    }
+
+    /**
+     * 创建透明阴影接收地面（groundShadow.filamat），用于显示车身投影。
+     */
+    public static int createGroundPlane(
+            Engine engine,
+            Scene scene,
+            MaterialInstance shadowMaterialInstance,
+            float boundingExtentX,
+            float boundingExtentY,
+            float boundingExtentZ,
+            float minY) {
+
+        float extentX = 10.0f * boundingExtentX;
+        float extentZ = 10.0f * boundingExtentZ;
+
+        DiscMesh mesh = buildDisc(engine, Math.max(extentX, extentZ));
+
         int groundEntity = EntityManager.get().create();
         new RenderableManager.Builder(1)
-                .boundingBox(new Box(new float[]{0, 0, 0}, new float[]{extentX, 1e-4f, extentZ}))
+                .boundingBox(new Box(new float[]{0, 0, 0}, new float[]{mesh.radius, 1e-4f, mesh.radius}))
                 .material(0, shadowMaterialInstance)
-                .geometry(0, RenderableManager.PrimitiveType.TRIANGLES, vertexBuffer, indexBuffer)
+                .geometry(0, RenderableManager.PrimitiveType.TRIANGLES, mesh.vertexBuffer, mesh.indexBuffer)
                 .culling(false)
                 .receiveShadows(true)
                 .castShadows(false)
@@ -107,54 +153,13 @@ public class GroundFactory {
         float extentX = 10.0f * boundingExtentX;
         float extentZ = 10.0f * boundingExtentZ;
 
-        float[] vertices = {
-                -extentX, 0, -extentZ,
-                -extentX, 0, extentZ,
-                extentX, 0, extentZ,
-                extentX, 0, -extentZ
-        };
-
-        // 法线朝上的 packed TBN
-        short[] tbn = {
-                32767, 0, 32767, 32767,
-                32767, 0, 32767, 32767,
-                32767, 0, 32767, 32767,
-                32767, 0, 32767, 32767
-        };
-
-        short[] indices = {0, 1, 2, 2, 3, 0};
-
-        VertexBuffer vertexBuffer = new VertexBuffer.Builder()
-                .bufferCount(2)
-                .vertexCount(4)
-                .attribute(VertexBuffer.VertexAttribute.POSITION, 0,
-                        VertexBuffer.AttributeType.FLOAT3, 0, 3 * 4)
-                .attribute(VertexBuffer.VertexAttribute.TANGENTS, 1,
-                        VertexBuffer.AttributeType.SHORT4, 0, 4 * 2)
-                .normalized(VertexBuffer.VertexAttribute.TANGENTS)
-                .build(engine);
-
-        ByteBuffer vb = ByteBuffer.allocateDirect(vertices.length * 4).order(ByteOrder.nativeOrder());
-        vb.asFloatBuffer().put(vertices);
-        vertexBuffer.setBufferAt(engine, 0, vb);
-
-        ByteBuffer tbnBuf = ByteBuffer.allocateDirect(tbn.length * 2).order(ByteOrder.nativeOrder());
-        tbnBuf.asShortBuffer().put(tbn);
-        vertexBuffer.setBufferAt(engine, 1, tbnBuf);
-
-        IndexBuffer indexBuffer = new IndexBuffer.Builder()
-                .indexCount(indices.length)
-                .bufferType(IndexBuffer.Builder.IndexType.USHORT)
-                .build(engine);
-        ByteBuffer ib = ByteBuffer.allocateDirect(indices.length * 2).order(ByteOrder.nativeOrder());
-        ib.asShortBuffer().put(indices);
-        indexBuffer.setBuffer(engine, ib);
+        DiscMesh mesh = buildDisc(engine, Math.max(extentX, extentZ));
 
         int groundEntity = EntityManager.get().create();
         new RenderableManager.Builder(1)
-                .boundingBox(new Box(new float[]{0, 0, 0}, new float[]{extentX, 1e-4f, extentZ}))
+                .boundingBox(new Box(new float[]{0, 0, 0}, new float[]{mesh.radius, 1e-4f, mesh.radius}))
                 .material(0, litMaterialInstance)
-                .geometry(0, RenderableManager.PrimitiveType.TRIANGLES, vertexBuffer, indexBuffer)
+                .geometry(0, RenderableManager.PrimitiveType.TRIANGLES, mesh.vertexBuffer, mesh.indexBuffer)
                 .culling(false)
                 .receiveShadows(true)   // 接收阴影（车灯投影）
                 .castShadows(false)
