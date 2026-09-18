@@ -169,9 +169,10 @@ public class FilamentView2 extends SurfaceView {
         // 发光四边形工厂（灯条/速度光束共用）
         mQuadFactory = EmissiveQuadFactory.create(getContext(), mEngine);
         // 车灯在模型包围盒计算完成后（addGround 内已读取包围盒）再创建
-        mCarLights = new CarLightSystem(mEngine, mModelViewer.getScene(), mQuadFactory, mGroundY);
+        mCarLights = new CarLightSystem(mEngine, mModelViewer.getScene(), mGroundY);
         mCarLights.setup();
-        mCarLights.setupRearLights();
+        // 尾灯：驱动模型侧拆出的 CARRERA_4096_TAILLIGHTS 材质
+        mCarLights.setupRearLights(mModelViewer.getAsset());
 
         // ── 展厅氛围：主光/轮廓光 + 自发光灯条 ──
         mShowroomFx = new ShowroomFx(mEngine, mModelViewer.getScene(), view, mQuadFactory, mGroundY);
@@ -390,8 +391,9 @@ public class FilamentView2 extends SurfaceView {
      * 模型加载
      */
     private void loadModel() {
-        // red_car.glb cartoon_sports_car.glb
-        try (InputStream is = getContext().getAssets().open("models/cartoon_sports_car.glb")) {
+        // 由 tools/split_taillights.py 生成的模型：尾灯拆成独立材质，可独立开关
+        try (InputStream is = getContext().getAssets()
+                .open("models/cartoon_sports_car_taillights.glb")) {
             byte[] bytes = new byte[is.available()];
             int length = is.read(bytes);
             ByteBuffer buffer = ByteBuffer.wrap(bytes, 0, length);
@@ -453,6 +455,18 @@ public class FilamentView2 extends SurfaceView {
 
     public boolean isRearLightOn() {
         return mCarLights.isRearLightOn();
+    }
+
+    /**
+     * 开启/关闭转向灯（开启后自动闪烁）
+     */
+    public void setTurnSignalEnabled(boolean enabled) {
+        mCarLights.setTurnSignalEnabled(enabled);
+        wakeUp();
+    }
+
+    public boolean isTurnSignalOn() {
+        return mCarLights.isTurnSignalOn();
     }
 
     public float[] getLightDirection() {
@@ -713,6 +727,9 @@ public class FilamentView2 extends SurfaceView {
             // 行驶氛围：随速度非线性压暗环境光/主光/灯条，突出自发光光束
             mShowroomFx.updateDriveMood(mDrive.getCurrentSpeed());
 
+            // 转向灯闪烁
+            mCarLights.update(frameTimeNanos);
+
             // 速度光束 + 相机抖动
             mLastVisibleBeams = mSpeedLines.update(frameTimeNanos, mDrive.getCurrentSpeed());
             mRenderPipeline.update(frameTimeNanos, mDrive.getCurrentSpeed());
@@ -791,7 +808,7 @@ public class FilamentView2 extends SurfaceView {
             return true;
         }
         if (mDrive.isDrivingRequested() || mDrive.getCurrentSpeed() > 0.01f
-                || mLastVisibleBeams > 0) {
+                || mLastVisibleBeams > 0 || mCarLights.isTurnSignalOn()) {
             return true;
         }
         if (SystemClock.uptimeMillis() < mInteractHoldUntilMs) {

@@ -39,7 +39,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DEFAULT_GLB = os.path.join(ROOT, "app/src/main/assets/models/cartoon_sports_car.glb")
+DEFAULT_GLB = os.path.join(ROOT, "tools/models/cartoon_sports_car.glb")
 OUT_DIR = os.path.join(ROOT, "app/src/main/assets/skins")
 ATLAS_IMAGE_INDEX = 0
 PAINT_KEYWORD = "CARRERA_4096"

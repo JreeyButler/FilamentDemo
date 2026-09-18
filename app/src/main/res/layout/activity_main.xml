@@ -48,6 +48,14 @@
             android:textOff="@string/open_rear_light"
             android:textOn="@string/close_rear_light" />
 
+        <ToggleButton
+            android:id="@+id/toggle_turn_signal"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:checked="false"
+            android:textOff="@string/open_turn_signal"
+            android:textOn="@string/close_turn_signal" />
+
         <Button
             android:id="@+id/btn_toggle_light_dir_panel"
             android:layout_width="wrap_content"

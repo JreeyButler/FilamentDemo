@@ -18,7 +18,7 @@ import struct
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GLB = os.path.join(ROOT, "app/src/main/assets/models/cartoon_sports_car.glb")
+GLB = os.path.join(ROOT, "tools/models/cartoon_sports_car.glb")
 OUT_DIR = os.path.join(ROOT, "app/src/main/assets/skins")
 OUT_SIZE = 2048
 ATLAS_IMAGE_INDEX = 0  # CARRERA_4096 外观 base color 图集

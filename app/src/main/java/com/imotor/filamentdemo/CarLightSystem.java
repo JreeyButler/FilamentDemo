@@ -6,12 +6,18 @@ import com.google.android.filament.Engine;
 import com.google.android.filament.EntityManager;
 import com.google.android.filament.LightManager;
 import com.google.android.filament.MaterialInstance;
+import com.google.android.filament.RenderableManager;
 import com.google.android.filament.Scene;
+import com.google.android.filament.gltfio.FilamentAsset;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 车灯系统：
  * - 车头：左右两颗 FOCUSED_SPOT 前照灯，支持开关与光轴/位置实时微调；
- * - 车尾：红色自发光灯带（emissive quad + Bloom），支持开关。
+ * - 车尾：驱动模型侧拆出的 {@code CARRERA_4096_TAILLIGHTS} 材质自发光（真实灯罩几何），
+ *   并叠加两颗红色点光制造光溢出，独立开关。
  *
  * @author Yan.Liangliang
  * @date 2025/9/18
@@ -34,16 +40,32 @@ public final class CarLightSystem {
     // 左右灯各向外偏约 2.6°，让两束光在远处分开成两个独立光斑，而不是中间糊成一团
     private static final float BEAM_TOE_Z = 0.045f;
 
-    // ── 车尾灯几何（lamp 透镜条在 x≈-1.8~-1.5、y≈0.6、z≈±0.88）──────────────
-    private static final float REAR_LIGHT_X = -1.83f;   // 尾灯面稍靠车外，避免埋进车身
-    private static final float REAR_LIGHT_Y = 0.60f;
-    private static final float REAR_LIGHT_WIDTH = 1.50f;  // 沿 Z 的灯带宽度
-    private static final float REAR_LIGHT_HEIGHT = 0.16f; // 沿 Y 的灯带高度
-    private static final float REAR_LIGHT_INTENSITY = 16f;
-    // 两颗红色点光：给尾灯加"光溢出"，让灯带与车身/地面融为一体，减少贴纸感
-    private static final float REAR_GLOW_X = -1.95f;
-    private static final float REAR_GLOW_Y = 0.60f;
-    private static final float REAR_GLOW_Z = 0.55f;
+    // ── 车尾灯（由 tools/split_taillights.py 拆出的独立材质）────────────────────
+    /**
+     * 尾灯材质名（模型侧拆分生成）
+     */
+    private static final String TAIL_MATERIAL_NAME = "CARRERA_4096_TAILLIGHTS";
+    /**
+     * 尾灯开启时的自发光强度（emissiveFactor 已由模型设为红色）
+     */
+    private static final float TAIL_EMISSIVE_STRENGTH = 18f;
+    /**
+     * 转向灯材质名（模型侧拆分生成）
+     */
+    private static final String TURN_MATERIAL_NAME = "CARRERA_4096_TURNSIGNALS";
+    /**
+     * 转向灯点亮时的自发光强度（emissiveFactor 已由模型设为琥珀色）
+     */
+    private static final float TURN_EMISSIVE_STRENGTH = 24f;
+    /**
+     * 转向灯闪烁半周期（纳秒）：约 0.4s 亮 / 0.4s 灭
+     */
+    private static final long TURN_BLINK_INTERVAL_NS = 400_000_000L;
+    // 两颗红色点光：给尾灯加"光溢出"，让灯罩与车身/地面融为一体
+    // 对齐中央尾灯条带（x≈-1.81、y≈0.59、z∈[-0.51,0.51]）
+    private static final float REAR_GLOW_X = -1.90f;
+    private static final float REAR_GLOW_Y = 0.59f;
+    private static final float REAR_GLOW_Z = 0.32f;
     private static final float REAR_GLOW_INTENSITY = 26_000f;  // 流明
     private static final float REAR_GLOW_FALLOFF = 2.2f;       // 衰减半径（米）
 
@@ -54,15 +76,23 @@ public final class CarLightSystem {
     private boolean mFrontLightOn = false;
 
     /**
-     * 尾灯自发光灯带 entity，默认不加入场景（关灯状态）
+     * 模型尾部灯罩的材质实例（emissiveStrength 控制开关）
      */
-    private final java.util.List<Integer> mRearLightEntities = new java.util.ArrayList<>();
+    private final List<MaterialInstance> mTailMaterialInstances = new ArrayList<>();
+    /**
+     * 模型转向灯的材质实例
+     */
+    private final List<MaterialInstance> mTurnMaterialInstances = new ArrayList<>();
     /**
      * 尾灯红色点光 entity（左右各一颗），默认不加入场景
      */
     private final int[] mRearGlowLightEntities = {-1, -1};
     private boolean mRearLightOn = false;
-    private final EmissiveQuadFactory mQuadFactory;
+
+    // ── 转向灯闪烁状态 ────────────────────────────────────────────────────
+    private boolean mTurnSignalOn = false;
+    private long mTurnLastToggleNs = -1;
+    private boolean mTurnPhaseOn = false;
 
     /**
      * 当前光轴方向（两颗灯共用，可实时微调）
@@ -80,11 +110,9 @@ public final class CarLightSystem {
     private final Scene mScene;
     private final float mGroundY;
 
-    public CarLightSystem(Engine engine, Scene scene,
-                          EmissiveQuadFactory quadFactory, float groundY) {
+    public CarLightSystem(Engine engine, Scene scene, float groundY) {
         mEngine = engine;
         mScene = scene;
-        mQuadFactory = quadFactory;
         mGroundY = groundY;
     }
 
@@ -117,28 +145,55 @@ public final class CarLightSystem {
     }
 
     /**
-     * 创建车尾红色自发光灯带（默认关灯，entity 先从场景移除）。
-     * 车模自带的尾灯透镜（material CARRERA_4096_lamps）几乎不自发光，
-     * 这里用 emissive quad 叠一条可控的尾灯带，经 Bloom 呈现红色辉光。
+     * 初始化尾灯：定位模型侧拆出的 {@code CARRERA_4096_TAILLIGHTS} 材质实例
+     * （默认 emissiveStrength=0 关灯），并创建两颗红色点光做光溢出。
+     *
+     * @param asset 拆分后的车模资源（由 tools/split_taillights.py 生成）
      */
-    public void setupRearLights() {
-        if (mQuadFactory == null || !mQuadFactory.isReady()) {
-            Log.w(TAG, "setupRearLights: emissive 材质不可用，尾灯跳过");
-            return;
+    public void setupRearLights(FilamentAsset asset) {
+        if (asset != null) {
+            RenderableManager rm = mEngine.getRenderableManager();
+            for (int entity : asset.getRenderableEntities()) {
+                int ri = rm.getInstance(entity);
+                if (ri == 0) {
+                    continue;
+                }
+                for (int prim = 0; prim < rm.getPrimitiveCount(ri); prim++) {
+                    MaterialInstance mi = rm.getMaterialInstanceAt(ri, prim);
+                    if (mi == null || mi.getMaterial() == null) {
+                        continue;
+                    }
+                    String name = mi.getName();
+                    if (name == null) {
+                        continue;
+                    }
+                    if (name.contains(TAIL_MATERIAL_NAME)) {
+                        // 自发光颜色由模型设为红色，这里只控制强度开关
+                        if (mi.getMaterial().hasParameter("emissiveFactor")) {
+                            mi.setParameter("emissiveFactor", 1.0f, 0.05f, 0.03f);
+                        }
+                        mi.setParameter("emissiveStrength", 0f);
+                        mTailMaterialInstances.add(mi);
+                    } else if (name.contains(TURN_MATERIAL_NAME)) {
+                        // 转向灯：琥珀色，默认灭，由 update() 控制闪烁
+                        if (mi.getMaterial().hasParameter("emissiveFactor")) {
+                            mi.setParameter("emissiveFactor", 1.0f, 0.45f, 0.0f);
+                        }
+                        mi.setParameter("emissiveStrength", 0f);
+                        mTurnMaterialInstances.add(mi);
+                    }
+                }
+            }
         }
-        MaterialInstance bar = mQuadFactory.getMaterial().createInstance();
-        bar.setDoubleSided(true);
-        bar.setParameter("glowColor", 1.0f, 0.06f, 0.04f);
-        bar.setParameter("intensity", REAR_LIGHT_INTENSITY);
-        int entity = mQuadFactory.createQuad(mEngine, mScene, bar,
-                REAR_LIGHT_X, REAR_LIGHT_Y, 0f,
-                REAR_LIGHT_WIDTH, REAR_LIGHT_HEIGHT,
-                EmissiveQuadFactory.ORIENT_FACING_X);
-        mRearLightEntities.add(entity);
-        // 关灯：先从场景移除，开灯时再加回
-        mScene.removeEntity(entity);
+        if (mTailMaterialInstances.isEmpty()) {
+            Log.w(TAG, "setupRearLights: 未找到 " + TAIL_MATERIAL_NAME
+                    + " 材质，尾灯开关不可用（模型是否已拆分？）");
+        } else {
+            Log.d(TAG, "setupRearLights: 尾灯材质实例 " + mTailMaterialInstances.size() + " 个");
+        }
+        Log.d(TAG, "setupRearLights: 转向灯材质实例 " + mTurnMaterialInstances.size() + " 个");
 
-        // 两颗红色点光，制造灯带向车身/地面的光溢出
+        // 两颗红色点光，制造灯罩向车身/地面的光溢出
         float[] baseZ = {REAR_GLOW_Z, -REAR_GLOW_Z};
         for (int i = 0; i < mRearGlowLightEntities.length; i++) {
             int glow = EntityManager.get().create();
@@ -152,18 +207,19 @@ public final class CarLightSystem {
                     .build(mEngine, glow);
             mScene.removeEntity(glow);
         }
-        Log.d(TAG, "setupRearLights: 已创建尾灯灯带 + 红色点光");
     }
 
     /**
-     * 开启或关闭车尾灯
+     * 开启或关闭车尾灯：切换尾灯材质 emissiveStrength + 红色点光。
      */
     public void setRearLightEnabled(boolean enabled) {
-        if (mRearLightEntities.isEmpty()) return;
+        if (mTailMaterialInstances.isEmpty() && mRearGlowLightEntities[0] == -1) {
+            return;
+        }
         Log.d(TAG, "setRearLightEnabled: " + enabled);
         if (enabled && !mRearLightOn) {
-            for (int e : mRearLightEntities) {
-                mScene.addEntity(e);
+            for (MaterialInstance mi : mTailMaterialInstances) {
+                mi.setParameter("emissiveStrength", TAIL_EMISSIVE_STRENGTH);
             }
             for (int e : mRearGlowLightEntities) {
                 if (e != -1) {
@@ -172,8 +228,8 @@ public final class CarLightSystem {
             }
             mRearLightOn = true;
         } else if (!enabled && mRearLightOn) {
-            for (int e : mRearLightEntities) {
-                mScene.removeEntity(e);
+            for (MaterialInstance mi : mTailMaterialInstances) {
+                mi.setParameter("emissiveStrength", 0f);
             }
             for (int e : mRearGlowLightEntities) {
                 if (e != -1) {
@@ -186,6 +242,59 @@ public final class CarLightSystem {
 
     public boolean isRearLightOn() {
         return mRearLightOn;
+    }
+
+    /**
+     * 开启/关闭转向灯（开启后由 update() 按周期闪烁）。
+     */
+    public void setTurnSignalEnabled(boolean enabled) {
+        if (mTurnMaterialInstances.isEmpty()) {
+            Log.w(TAG, "setTurnSignalEnabled: 无转向灯材质实例");
+            return;
+        }
+        Log.d(TAG, "setTurnSignalEnabled: " + enabled);
+        mTurnSignalOn = enabled;
+        if (enabled) {
+            // 立即点亮，并重置闪烁计时
+            mTurnLastToggleNs = -1;
+            mTurnPhaseOn = true;
+            applyTurn(true);
+        } else {
+            applyTurn(false);
+            mTurnLastToggleNs = -1;
+            mTurnPhaseOn = false;
+        }
+    }
+
+    public boolean isTurnSignalOn() {
+        return mTurnSignalOn;
+    }
+
+    /**
+     * 每帧驱动转向灯闪烁（仅在开启时）。
+     */
+    public void update(long frameTimeNanos) {
+        if (!mTurnSignalOn || mTurnMaterialInstances.isEmpty()) {
+            return;
+        }
+        if (mTurnLastToggleNs < 0) {
+            mTurnLastToggleNs = frameTimeNanos;
+            mTurnPhaseOn = true;
+            applyTurn(true);
+            return;
+        }
+        if (frameTimeNanos - mTurnLastToggleNs >= TURN_BLINK_INTERVAL_NS) {
+            mTurnLastToggleNs = frameTimeNanos;
+            mTurnPhaseOn = !mTurnPhaseOn;
+            applyTurn(mTurnPhaseOn);
+        }
+    }
+
+    private void applyTurn(boolean on) {
+        float strength = on ? TURN_EMISSIVE_STRENGTH : 0f;
+        for (MaterialInstance mi : mTurnMaterialInstances) {
+            mi.setParameter("emissiveStrength", strength);
+        }
     }
 
     /**

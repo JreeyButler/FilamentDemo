@@ -44,7 +44,7 @@ public final class CarSkinSystem {
      * 需要排除的非车漆材质关键字（内饰/玻璃/后视镜/大灯/车灯）
      */
     private static final String[] EXCLUDE_KEYWORDS = {
-            "MATTE", "GLASS", "MIRROR", "HEADLIGHT", "LAMP"
+            "MATTE", "GLASS", "MIRROR", "HEADLIGHT", "TAILLIGHT", "TURNSIGNAL", "LAMP"
     };
 
     /**
