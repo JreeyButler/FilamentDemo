@@ -2,6 +2,7 @@ package com.imotor.filamentdemo;
 
 import android.annotation.SuppressLint;
 import android.content.Context;
+import android.os.SystemClock;
 
 import android.content.res.AssetManager;
 import android.opengl.Matrix;
@@ -625,6 +626,7 @@ public class FilamentView2 extends SurfaceView {
      */
     public void setTargetSpeed(float speed) {
         mTargetSpeed = Math.max(0f, Math.min(MAX_SPEED, speed));
+        wakeUp();
     }
 
     /**
@@ -790,6 +792,7 @@ public class FilamentView2 extends SurfaceView {
             }
             mFrontLightOn = false;
         }
+        wakeUp();
     }
 
     public boolean isFrontLightOn() {
@@ -987,6 +990,9 @@ public class FilamentView2 extends SurfaceView {
             switch (event.getActionMasked()) {
                 case android.view.MotionEvent.ACTION_DOWN:
                 case android.view.MotionEvent.ACTION_POINTER_DOWN:
+                    // 手势开始：保持满帧渲染（深睡时同时恢复调度）
+                    mTouchActive = true;
+                    wakeUp();
                     // 指针数变化时重置手势
                     if (mCurrentGesture != Gesture.NONE) {
                         mManipulator.grabEnd();
@@ -1099,6 +1105,9 @@ public class FilamentView2 extends SurfaceView {
 
                 case android.view.MotionEvent.ACTION_UP:
                 case android.view.MotionEvent.ACTION_CANCEL:
+                    // 手势结束：保持一段满帧余量，覆盖操纵器阻尼收尾再降频
+                    mTouchActive = false;
+                    mInteractHoldUntilMs = SystemClock.uptimeMillis() + INTERACT_HOLD_MS;
                     mManipulator.grabEnd();
                     mCurrentGesture = Gesture.NONE;
                     mOrbitCount = 0;
@@ -1151,10 +1160,79 @@ public class FilamentView2 extends SurfaceView {
             updateSpeedLines(frameTimeNanos);
             updateShake(frameTimeNanos);
 
-            choreographer.postFrameCallback(this);
             renderFrame(frameTimeNanos);
+            // 三段式调度省电：
+            // 1) 场景忙碌（行驶/动画/手势/光束）→ 满帧
+            // 2) 静止冷却期 → 10fps 低频渲染
+            // 3) 长时间静止 → 停止调度渲染，屏幕保留最后一帧，唤醒后恢复
+            if (isSceneBusy()) {
+                mIdleSinceMs = 0;
+                choreographer.postFrameCallback(this);
+            } else {
+                long now = SystemClock.uptimeMillis();
+                if (mIdleSinceMs == 0) {
+                    mIdleSinceMs = now;
+                }
+                if (now - mIdleSinceMs < LONG_IDLE_THRESHOLD_MS) {
+                    choreographer.postFrameCallbackDelayed(this, IDLE_RENDER_INTERVAL_MS);
+                }
+                // 完全静止：不再投递回调（深睡），有交互/参数变化时经 wakeUp() 恢复
+            }
         }
 
+    }
+
+    /**
+     * 静止时的渲染间隔（毫秒）：约 10fps 足以维持静态画面的响应感
+     */
+    private static final long IDLE_RENDER_INTERVAL_MS = 100;
+    /**
+     * 静止冷却期（毫秒）：进入静止后先按 10fps 渲染这段时长，随后彻底停止调度
+     */
+    private static final long LONG_IDLE_THRESHOLD_MS = 3000;
+    /**
+     * 进入静止的时刻（SystemClock.uptimeMillis），0 表示当前忙碌；仅帧回调线程访问
+     */
+    private long mIdleSinceMs = 0;
+    /**
+     * 深睡唤醒：投递一次新的渲染循环（触摸/参数变化时调用）；
+     * 交互余量时间内保持满帧，之后视场景忙碌状态回落
+     */
+    private void wakeUp() {
+        mIdleSinceMs = 0;
+        mInteractHoldUntilMs = SystemClock.uptimeMillis() + INTERACT_HOLD_MS;
+        choreographer.removeFrameCallback(mFrameScheduler);
+        choreographer.postFrameCallback(mFrameScheduler);
+    }
+    /**
+     * 交互停手后保持满帧的余量（毫秒）：覆盖相机手势惯性/阻尼的收尾
+     */
+    private static final long INTERACT_HOLD_MS = 400;
+    /**
+     * 手势是否进行中（由触摸监听更新）
+     */
+    private boolean mTouchActive = false;
+    /**
+     * 最近一次触摸抬起的截止时刻（SystemClock.uptimeMillis）
+     */
+    private long mInteractHoldUntilMs = 0;
+
+    /**
+     * 场景是否处于必须在满帧驱动的状态：
+     * 开场动画、行驶（轮转/光束/抖动）、模型循环动画、用户手势（含阻尼余量）。
+     * 车门/车灯等瞬时变化由空闲低频循环的下一次渲染自然呈现。
+     */
+    private boolean isSceneBusy() {
+        if (mIntroPlaying || mTouchActive) {
+            return true;
+        }
+        if (mTargetSpeed > 0f || mCurrentSpeed > 0.01f || mBeamsInScene) {
+            return true;
+        }
+        if (SystemClock.uptimeMillis() < mInteractHoldUntilMs) {
+            return true;
+        }
+        return false;
     }
 
     // ── 自管渲染（ModelViewer.render 内部相机同步与绘制焊死，无钩子插抖动）─────
@@ -1522,6 +1600,7 @@ public class FilamentView2 extends SurfaceView {
                 manager.setTransform(instance, currentTransform);
             }
             doorOpenStatus.put(doorIndex, true);
+            wakeUp();
         }
 
         @Override
@@ -1539,6 +1618,7 @@ public class FilamentView2 extends SurfaceView {
                     }
                 }
                 doorOpenStatus.put(doorIndex, false);
+                wakeUp();
             }
         }
 
